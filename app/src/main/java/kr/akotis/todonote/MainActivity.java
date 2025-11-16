@@ -1,5 +1,8 @@
 package kr.akotis.todonote;
 
+import android.app.AlertDialog;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
 import android.os.Bundle;
 
 import androidx.activity.EdgeToEdge;
@@ -68,11 +71,30 @@ public class MainActivity extends AppCompatActivity {
 
     // 상단 NavBar 목록 메뉴들
     private void handleDrawerItemClick(int itemId) {
-        if (itemId == R.id.nav_settings) {
-            // TODO: 설정 화면으로 이동
+        if (itemId == R.id.nav_export) {
+            // TODO: 내보내기 기능 구현
+        } else if (itemId == R.id.nav_import) {
+            // TODO: 가져오기 기능 구현
         } else if (itemId == R.id.nav_about) {
-            // TODO: 정보 화면으로 이동
+            showAboutDialog();
         }
+    }
+
+    private void showAboutDialog() {
+        String versionName = "1.0";
+        try {
+            PackageInfo packageInfo = getPackageManager().getPackageInfo(getPackageName(), 0);
+            versionName = packageInfo.versionName;
+        } catch (PackageManager.NameNotFoundException e) {
+            e.printStackTrace();
+        }
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("정보")
+                .setMessage("ToDoNote\n버전: " + versionName + "\n\n할 일과 메모를 한 곳에서 관리하는 간편한 앱입니다.\n개발자 문의: github.com/btlime3/ToDoNote/issues")
+                .setPositiveButton("확인", null)
+                .create()
+                .show();
     }
 
     // 하단 NavBar 생성

@@ -4,9 +4,13 @@
         android:id="@+id/nav_group_main"
         android:checkableBehavior="none">
         <item
-            android:id="@+id/nav_settings"
-            android:icon="@drawable/ic_settings"
-            android:title="설정" />
+            android:id="@+id/nav_export"
+            android:icon="@drawable/ic_export"
+            android:title="내보내기" />
+        <item
+            android:id="@+id/nav_import"
+            android:icon="@drawable/ic_import"
+            android:title="가져오기" />
         <item
             android:id="@+id/nav_about"
             android:icon="@drawable/ic_info"
