@@ -1,5 +1,6 @@
 package kr.akotis.todonote;
 
+import android.text.method.LinkMovementMethod;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -90,6 +91,8 @@ public class MemoAdapter extends RecyclerView.Adapter<MemoAdapter.MemoViewHolder
 
         public void bind(MemoItem memo) {
             tvContent.setText(memo.getContent());
+            // 링크 클릭을 위해 MovementMethod 설정
+            tvContent.setMovementMethod(LinkMovementMethod.getInstance());
         }
     }
 }
