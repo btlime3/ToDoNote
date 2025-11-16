@@ -2,4 +2,35 @@
 <resources>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    
+    <!-- 메인 컬러 (Primary) - 민트/청록색 -->
+    <color name="color_primary">#A0D9C8</color>
+    <color name="color_primary_dark">#7DB8A5</color>
+    <color name="color_primary_light">#C8E8DC</color>
+    
+    <!-- 보조 컬러 (Secondary) - 연한 살구색 -->
+    <color name="color_secondary">#F0D5C9</color>
+    <color name="color_secondary_dark">#E0B5A3</color>
+    <color name="color_secondary_light">#F8E8E0</color>
+    
+    <!-- 강조 컬러 1 (Accent) - 노란 연필색 -->
+    <color name="color_accent">#FFEB9E</color>
+    <color name="color_accent_dark">#FFD966</color>
+    <color name="color_accent_light">#FFF5D1</color>
+    
+    <!-- 배경 컬러 (Background) - 옅은 크림색 -->
+    <color name="color_background">#FBF9F1</color>
+    <color name="color_surface">#FFFFFF</color>
+    
+    <!-- 텍스트/라인 (Dark Text) - 진한 회색 -->
+    <color name="color_text_dark">#444444</color>
+    <color name="color_text_medium">#666666</color>
+    <color name="color_text_light">#999999</color>
+    
+    <!-- 아이콘 라인 (Outline) - 어두운 검은색 -->
+    <color name="color_outline">#333333</color>
+    
+    <!-- BottomNavigationView 선택 색상 -->
+    <color name="nav_selected">#A0D9C8</color>
+    <color name="nav_unselected">#999999</color>
 </resources>

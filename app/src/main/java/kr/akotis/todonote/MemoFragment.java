@@ -193,8 +193,8 @@ public class MemoFragment extends Fragment {
                     android.graphics.Paint paint = new android.graphics.Paint();
                     
                     if (dX > 0) {
-                        // 오른쪽 스와이프 (수정) - 파란색 배경
-                        paint.setColor(0xFF2196F3);
+                        // 오른쪽 스와이프 (수정) - 메인 컬러 배경
+                        paint.setColor(0xFFA0D9C8); // color_primary
                         c.drawRect((float) itemView.getLeft(), (float) itemView.getTop(), dX, (float) itemView.getBottom(), paint);
                         
                         // 수정 아이콘
@@ -209,8 +209,8 @@ public class MemoFragment extends Fragment {
                             editIcon.draw(c);
                         }
                     } else {
-                        // 왼쪽 스와이프 (삭제) - 빨간색 배경
-                        paint.setColor(0xFFE53935);
+                        // 왼쪽 스와이프 (삭제) - 보조 컬러 어두운 버전 사용
+                        paint.setColor(0xFFE0B5A3); // color_secondary_dark
                         c.drawRect((float) itemView.getRight() + dX, (float) itemView.getTop(), (float) itemView.getRight(), (float) itemView.getBottom(), paint);
                         
                         // 삭제 아이콘

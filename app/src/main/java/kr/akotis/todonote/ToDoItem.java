@@ -2,7 +2,10 @@ package kr.akotis.todonote;
 
 public class ToDoItem {
     private long id;
-    private String content;
+    private String title;
+    private String detail;
+    private long date; // 날짜 (년월일만, 시간 제외)
+    private long time; // 시간 (밀리초)
     private boolean isCompleted;
     private long createdAt;
     private long updatedAt;
@@ -10,8 +13,11 @@ public class ToDoItem {
     public ToDoItem() {
     }
 
-    public ToDoItem(String content) {
-        this.content = content;
+    public ToDoItem(String title, String detail, long date, long time) {
+        this.title = title;
+        this.detail = detail;
+        this.date = date;
+        this.time = time;
         this.isCompleted = false;
         this.createdAt = System.currentTimeMillis();
         this.updatedAt = System.currentTimeMillis();
@@ -25,12 +31,36 @@ public class ToDoItem {
         this.id = id;
     }
 
-    public String getContent() {
-        return content;
+    public String getTitle() {
+        return title;
     }
 
-    public void setContent(String content) {
-        this.content = content;
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
+    public String getDetail() {
+        return detail;
+    }
+
+    public void setDetail(String detail) {
+        this.detail = detail;
+    }
+
+    public long getDate() {
+        return date;
+    }
+
+    public void setDate(long date) {
+        this.date = date;
+    }
+
+    public long getTime() {
+        return time;
+    }
+
+    public void setTime(long time) {
+        this.time = time;
     }
 
     public boolean isCompleted() {

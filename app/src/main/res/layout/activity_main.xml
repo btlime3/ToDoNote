@@ -6,6 +6,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:fitsSystemWindows="true"
+    android:background="@color/color_background"
     tools:context=".MainActivity">
 
     <androidx.constraintlayout.widget.ConstraintLayout
@@ -17,7 +18,6 @@
             android:id="@+id/app_bar"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent">
@@ -26,10 +26,11 @@
                 android:id="@+id/toolbar"
                 android:layout_width="match_parent"
                 android:layout_height="?attr/actionBarSize"
-                android:background="?attr/colorPrimary"
+                android:background="@color/color_primary"
                 app:title="ToDoNote"
-                app:titleTextColor="@android:color/white"
-                app:navigationIcon="@drawable/ic_menu" />
+                app:titleTextColor="@color/color_text_dark"
+                app:navigationIcon="@drawable/ic_menu"
+                app:navigationIconTint="@color/color_text_dark" />
 
         </com.google.android.material.appbar.AppBarLayout>
 
@@ -47,6 +48,10 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             app:menu="@menu/bottom_nav_menu"
+            app:itemIconTint="@color/nav_item_color_selector"
+            app:itemTextColor="@color/nav_item_color_selector"
+            app:itemRippleColor="@color/color_primary_light"
+            app:backgroundTint="@color/color_surface"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent" />
@@ -59,9 +64,10 @@
         android:layout_height="match_parent"
         android:layout_gravity="start"
         android:fitsSystemWindows="true"
+        android:background="@color/color_surface"
         app:headerLayout="@layout/nav_header"
-        app:itemIconTint="?attr/colorControlNormal"
-        app:itemTextColor="?attr/colorOnSurface"
+        app:itemIconTint="@color/color_text_dark"
+        app:itemTextColor="@color/color_text_dark"
         app:menu="@menu/drawer_menu" />
 
 </androidx.drawerlayout.widget.DrawerLayout>

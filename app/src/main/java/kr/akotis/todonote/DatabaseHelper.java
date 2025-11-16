@@ -12,12 +12,15 @@ import java.util.List;
 public class DatabaseHelper extends SQLiteOpenHelper {
 
     private static final String DATABASE_NAME = "ToDoNote.db";
-    private static final int DATABASE_VERSION = 2;
+    private static final int DATABASE_VERSION = 3;
 
     // ToDo 테이블
     private static final String TABLE_TODO = "todo";
     private static final String COL_TODO_ID = "id";
-    private static final String COL_TODO_CONTENT = "content";
+    private static final String COL_TODO_TITLE = "title";
+    private static final String COL_TODO_DETAIL = "detail";
+    private static final String COL_TODO_DATE = "date";
+    private static final String COL_TODO_TIME = "time";
     private static final String COL_TODO_COMPLETED = "completed";
     private static final String COL_TODO_CREATED_AT = "created_at";
     private static final String COL_TODO_UPDATED_AT = "updated_at";
@@ -47,7 +50,10 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         // ToDo 테이블 생성
         String createTodoTable = "CREATE TABLE " + TABLE_TODO + " (" +
                 COL_TODO_ID + " INTEGER PRIMARY KEY AUTOINCREMENT, " +
-                COL_TODO_CONTENT + " TEXT NOT NULL, " +
+                COL_TODO_TITLE + " TEXT NOT NULL, " +
+                COL_TODO_DETAIL + " TEXT, " +
+                COL_TODO_DATE + " INTEGER, " +
+                COL_TODO_TIME + " INTEGER, " +
                 COL_TODO_COMPLETED + " INTEGER DEFAULT 0, " +
                 COL_TODO_CREATED_AT + " INTEGER, " +
                 COL_TODO_UPDATED_AT + " INTEGER)";
@@ -80,6 +86,33 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             // 기존 데이터에 order 값 설정
             db.execSQL("UPDATE " + TABLE_MEMO + " SET " + COL_MEMO_ORDER + " = " + COL_MEMO_ID);
         }
+        if (oldVersion < 3) {
+            // ToDo 테이블 구조 변경 (content -> title, detail, date, time)
+            // 기존 테이블 백업
+            db.execSQL("ALTER TABLE " + TABLE_TODO + " RENAME TO " + TABLE_TODO + "_old");
+            // 새 테이블 생성
+            String createTodoTable = "CREATE TABLE " + TABLE_TODO + " (" +
+                    COL_TODO_ID + " INTEGER PRIMARY KEY AUTOINCREMENT, " +
+                    COL_TODO_TITLE + " TEXT NOT NULL, " +
+                    COL_TODO_DETAIL + " TEXT, " +
+                    COL_TODO_DATE + " INTEGER, " +
+                    COL_TODO_TIME + " INTEGER, " +
+                    COL_TODO_COMPLETED + " INTEGER DEFAULT 0, " +
+                    COL_TODO_CREATED_AT + " INTEGER, " +
+                    COL_TODO_UPDATED_AT + " INTEGER)";
+            db.execSQL(createTodoTable);
+            // 기존 데이터 마이그레이션 (content를 title로)
+            db.execSQL("INSERT INTO " + TABLE_TODO + " (" +
+                    COL_TODO_ID + ", " + COL_TODO_TITLE + ", " + COL_TODO_DETAIL + ", " +
+                    COL_TODO_DATE + ", " + COL_TODO_TIME + ", " + COL_TODO_COMPLETED + ", " +
+                    COL_TODO_CREATED_AT + ", " + COL_TODO_UPDATED_AT + ") " +
+                    "SELECT " + COL_TODO_ID + ", content, '', " +
+                    System.currentTimeMillis() + ", " + System.currentTimeMillis() + ", " +
+                    COL_TODO_COMPLETED + ", " + COL_TODO_CREATED_AT + ", " + COL_TODO_UPDATED_AT +
+                    " FROM " + TABLE_TODO + "_old");
+            // 백업 테이블 삭제
+            db.execSQL("DROP TABLE " + TABLE_TODO + "_old");
+        }
     }
 
     // ========== ToDo CRUD ==========
@@ -87,7 +120,10 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     public long insertToDo(ToDoItem todo) {
         SQLiteDatabase db = this.getWritableDatabase();
         ContentValues values = new ContentValues();
-        values.put(COL_TODO_CONTENT, todo.getContent());
+        values.put(COL_TODO_TITLE, todo.getTitle());
+        values.put(COL_TODO_DETAIL, todo.getDetail());
+        values.put(COL_TODO_DATE, todo.getDate());
+        values.put(COL_TODO_TIME, todo.getTime());
         values.put(COL_TODO_COMPLETED, todo.isCompleted() ? 1 : 0);
         values.put(COL_TODO_CREATED_AT, System.currentTimeMillis());
         values.put(COL_TODO_UPDATED_AT, System.currentTimeMillis());
@@ -100,13 +136,21 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     public List<ToDoItem> getAllToDos() {
         List<ToDoItem> todoList = new ArrayList<>();
         SQLiteDatabase db = this.getReadableDatabase();
-        Cursor cursor = db.query(TABLE_TODO, null, null, null, null, null, COL_TODO_CREATED_AT + " DESC");
+        // 날짜 순으로 정렬 (날짜가 빠른 순서대로, 날짜가 같으면 시간 순)
+        Cursor cursor = db.query(TABLE_TODO, null, null, null, null, null, 
+                COL_TODO_DATE + " ASC, " + COL_TODO_TIME + " ASC");
 
         if (cursor.moveToFirst()) {
             do {
                 ToDoItem todo = new ToDoItem();
                 todo.setId(cursor.getLong(cursor.getColumnIndexOrThrow(COL_TODO_ID)));
-                todo.setContent(cursor.getString(cursor.getColumnIndexOrThrow(COL_TODO_CONTENT)));
+                todo.setTitle(cursor.getString(cursor.getColumnIndexOrThrow(COL_TODO_TITLE)));
+                int detailIndex = cursor.getColumnIndex(COL_TODO_DETAIL);
+                todo.setDetail(detailIndex >= 0 ? cursor.getString(detailIndex) : "");
+                int dateIndex = cursor.getColumnIndex(COL_TODO_DATE);
+                todo.setDate(dateIndex >= 0 ? cursor.getLong(dateIndex) : System.currentTimeMillis());
+                int timeIndex = cursor.getColumnIndex(COL_TODO_TIME);
+                todo.setTime(timeIndex >= 0 ? cursor.getLong(timeIndex) : System.currentTimeMillis());
                 todo.setCompleted(cursor.getInt(cursor.getColumnIndexOrThrow(COL_TODO_COMPLETED)) == 1);
                 todo.setCreatedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_TODO_CREATED_AT)));
                 todo.setUpdatedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_TODO_UPDATED_AT)));
@@ -121,7 +165,10 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     public int updateToDo(ToDoItem todo) {
         SQLiteDatabase db = this.getWritableDatabase();
         ContentValues values = new ContentValues();
-        values.put(COL_TODO_CONTENT, todo.getContent());
+        values.put(COL_TODO_TITLE, todo.getTitle());
+        values.put(COL_TODO_DETAIL, todo.getDetail());
+        values.put(COL_TODO_DATE, todo.getDate());
+        values.put(COL_TODO_TIME, todo.getTime());
         values.put(COL_TODO_COMPLETED, todo.isCompleted() ? 1 : 0);
         values.put(COL_TODO_UPDATED_AT, System.currentTimeMillis());
 
