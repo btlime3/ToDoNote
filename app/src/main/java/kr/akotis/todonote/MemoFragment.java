@@ -262,7 +262,7 @@ public class MemoFragment extends Fragment {
                     int result = dbHelper.deleteMemo(memo.getId());
                     if (result > 0) {
                         memoAdapter.removeMemo(position);
-                        Toast.makeText(requireContext(), "메모가 삭제되었습니다.", Toast.LENGTH_SHORT).show();
+                        //Toast.makeText(requireContext(), "메모가 삭제되었습니다.", Toast.LENGTH_SHORT).show();
                     } else {
                         Toast.makeText(requireContext(), "삭제에 실패했습니다.", Toast.LENGTH_SHORT).show();
                         loadMemos(); // 실패 시 목록 새로고침

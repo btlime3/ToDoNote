@@ -8,6 +8,8 @@ import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
 import android.util.Base64;
 
+import javax.crypto.Cipher;
+import javax.crypto.spec.SecretKeySpec;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
@@ -493,7 +495,14 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         SQLiteDatabase db = this.getWritableDatabase();
         ContentValues values = new ContentValues();
         values.put(COL_NOTE_TITLE, note.getTitle());
-        values.put(COL_NOTE_CONTENT, note.getContent());
+        
+        // 잠금된 노트는 내용을 암호화하여 저장
+        String content = note.getContent();
+        if (note.isLocked() && hasNotePassword()) {
+            content = encryptContent(content);
+        }
+        values.put(COL_NOTE_CONTENT, content);
+        
         values.put(COL_NOTE_CREATED_AT, System.currentTimeMillis());
         values.put(COL_NOTE_UPDATED_AT, System.currentTimeMillis());
         values.put(COL_NOTE_LOCKED, note.isLocked() ? 1 : 0);
@@ -537,7 +546,14 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         SQLiteDatabase db = this.getWritableDatabase();
         ContentValues values = new ContentValues();
         values.put(COL_NOTE_TITLE, note.getTitle());
-        values.put(COL_NOTE_CONTENT, note.getContent());
+        
+        // 잠금된 노트는 내용을 암호화하여 저장
+        String content = note.getContent();
+        if (note.isLocked() && hasNotePassword()) {
+            content = encryptContent(content);
+        }
+        values.put(COL_NOTE_CONTENT, content);
+        
         values.put(COL_NOTE_UPDATED_AT, System.currentTimeMillis());
         values.put(COL_NOTE_LOCKED, note.isLocked() ? 1 : 0);
 
@@ -566,17 +582,24 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 NoteItem note = new NoteItem();
                 note.setId(cursor.getLong(cursor.getColumnIndexOrThrow(COL_NOTE_ID)));
                 note.setTitle(cursor.getString(cursor.getColumnIndexOrThrow(COL_NOTE_TITLE)));
-                note.setContent(cursor.getString(cursor.getColumnIndexOrThrow(COL_NOTE_CONTENT)));
+                
+                String content = cursor.getString(cursor.getColumnIndexOrThrow(COL_NOTE_CONTENT));
+                int lockedIndex = cursor.getColumnIndex(COL_NOTE_LOCKED);
+                boolean isLocked = lockedIndex >= 0 && cursor.getInt(lockedIndex) == 1;
+                
+                // 잠금된 노트는 내용을 복호화 (암호가 설정되어 있고 잠금 상태인 경우)
+                if (isLocked && hasNotePassword()) {
+                    content = decryptContent(content);
+                }
+                note.setContent(content);
+                
                 note.setCreatedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_NOTE_CREATED_AT)));
                 note.setUpdatedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_NOTE_UPDATED_AT)));
                 int deletedAtIndex = cursor.getColumnIndex(COL_NOTE_DELETED_AT);
                 if (deletedAtIndex >= 0 && !cursor.isNull(deletedAtIndex)) {
                     note.setDeletedAt(cursor.getLong(deletedAtIndex));
                 }
-                int lockedIndex = cursor.getColumnIndex(COL_NOTE_LOCKED);
-                if (lockedIndex >= 0) {
-                    note.setLocked(cursor.getInt(lockedIndex) == 1);
-                }
+                note.setLocked(isLocked);
                 noteList.add(note);
             } while (cursor.moveToNext());
         }
@@ -611,13 +634,20 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             note = new NoteItem();
             note.setId(cursor.getLong(cursor.getColumnIndexOrThrow(COL_NOTE_ID)));
             note.setTitle(cursor.getString(cursor.getColumnIndexOrThrow(COL_NOTE_TITLE)));
-            note.setContent(cursor.getString(cursor.getColumnIndexOrThrow(COL_NOTE_CONTENT)));
+            
+            String content = cursor.getString(cursor.getColumnIndexOrThrow(COL_NOTE_CONTENT));
+            int lockedIndex = cursor.getColumnIndex(COL_NOTE_LOCKED);
+            boolean isLocked = lockedIndex >= 0 && cursor.getInt(lockedIndex) == 1;
+            
+            // 잠금된 노트는 내용을 복호화 (암호가 설정되어 있고 잠금 상태인 경우)
+            if (isLocked && hasNotePassword()) {
+                content = decryptContent(content);
+            }
+            note.setContent(content);
+            
             note.setCreatedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_NOTE_CREATED_AT)));
             note.setUpdatedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_NOTE_UPDATED_AT)));
-            int lockedIndex = cursor.getColumnIndex(COL_NOTE_LOCKED);
-            if (lockedIndex >= 0) {
-                note.setLocked(cursor.getInt(lockedIndex) == 1);
-            }
+            note.setLocked(isLocked);
         }
 
         cursor.close();
@@ -710,13 +740,95 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     }
 
     /**
+     * 암호화 키를 생성합니다 (패스워드 해시의 첫 16바이트 사용).
+     */
+    private SecretKeySpec getEncryptionKey() {
+        String passwordHash = getNotePasswordHash();
+        if (passwordHash == null) {
+            return null;
+        }
+        try {
+            // 해시의 첫 16바이트를 키로 사용
+            byte[] hashBytes = Base64.decode(passwordHash, Base64.NO_WRAP);
+            byte[] keyBytes = new byte[16];
+            System.arraycopy(hashBytes, 0, keyBytes, 0, Math.min(16, hashBytes.length));
+            return new SecretKeySpec(keyBytes, "AES");
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    /**
+     * 텍스트를 AES로 암호화합니다.
+     */
+    private String encryptContent(String content) {
+        if (content == null || content.isEmpty()) {
+            return content;
+        }
+        try {
+            SecretKeySpec keySpec = getEncryptionKey();
+            if (keySpec == null) {
+                return content; // 암호가 설정되지 않았으면 암호화하지 않음
+            }
+            Cipher cipher = Cipher.getInstance("AES");
+            cipher.init(Cipher.ENCRYPT_MODE, keySpec);
+            byte[] encrypted = cipher.doFinal(content.getBytes("UTF-8"));
+            return Base64.encodeToString(encrypted, Base64.NO_WRAP);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return content; // 암호화 실패 시 원본 반환
+        }
+    }
+
+    /**
+     * 암호화된 텍스트를 복호화합니다.
+     */
+    private String decryptContent(String encryptedContent) {
+        if (encryptedContent == null || encryptedContent.isEmpty()) {
+            return encryptedContent;
+        }
+        try {
+            SecretKeySpec keySpec = getEncryptionKey();
+            if (keySpec == null) {
+                return encryptedContent; // 암호가 설정되지 않았으면 복호화하지 않음
+            }
+            Cipher cipher = Cipher.getInstance("AES");
+            cipher.init(Cipher.DECRYPT_MODE, keySpec);
+            byte[] decrypted = cipher.doFinal(Base64.decode(encryptedContent, Base64.NO_WRAP));
+            return new String(decrypted, "UTF-8");
+        } catch (Exception e) {
+            // 복호화 실패 시 암호화되지 않은 텍스트일 수 있으므로 원본 반환
+            return encryptedContent;
+        }
+    }
+
+    /**
      * 노트를 잠금/잠금해제합니다.
      */
     public int toggleNoteLock(long noteId, boolean lock) {
         SQLiteDatabase db = this.getWritableDatabase();
+        
+        // 현재 노트 정보 가져오기 (복호화된 상태)
+        NoteItem note = getNoteById(noteId);
+        if (note == null) {
+            db.close();
+            return 0;
+        }
+        
         ContentValues values = new ContentValues();
         values.put(COL_NOTE_LOCKED, lock ? 1 : 0);
         values.put(COL_NOTE_UPDATED_AT, System.currentTimeMillis());
+        
+        // 잠금 상태 변경 시 내용 암호화/복호화 처리
+        String content = note.getContent();
+        if (lock && hasNotePassword()) {
+            // 잠금: 내용 암호화
+            content = encryptContent(content);
+        }
+        // 잠금 해제: 이미 getNoteById에서 복호화되어 있으므로 그대로 저장
+        values.put(COL_NOTE_CONTENT, content);
+        
         int result = db.update(TABLE_NOTE, values, COL_NOTE_ID + " = ?", new String[]{String.valueOf(noteId)});
         db.close();
         return result;

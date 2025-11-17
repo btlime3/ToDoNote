@@ -6,12 +6,17 @@ import android.text.TextWatcher;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
+import androidx.biometric.BiometricManager;
+import androidx.biometric.BiometricPrompt;
+import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.google.android.material.button.MaterialButton;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.android.material.textfield.TextInputEditText;
@@ -139,33 +144,115 @@ public class NoteFragment extends Fragment {
             return;
         }
 
+        // 지문 인증 사용 가능 여부 확인
+        BiometricManager biometricManager = BiometricManager.from(requireContext());
+        boolean canUseBiometric = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK) == BiometricManager.BIOMETRIC_SUCCESS;
+        
+        if (canUseBiometric) {
+            // 지문 인증이 가능하면 먼저 지문 인증 시도
+            authenticateWithBiometric(note.getId(), true);
+        } else {
+            // 지문 인증이 불가능하면 암호 입력 다이얼로그 표시
+            showPasswordInputDialog(note.getId());
+        }
+    }
+
+    private void showPasswordInputDialog(long noteId) {
         View dialogView = getLayoutInflater().inflate(R.layout.dialog_password, null);
         TextInputLayout passwordLayout = dialogView.findViewById(R.id.password_layout);
         TextInputEditText etPassword = dialogView.findViewById(R.id.et_password);
+        MaterialButton btnFingerprint = dialogView.findViewById(R.id.btn_fingerprint);
 
-        new MaterialAlertDialogBuilder(requireContext())
+        // 지문 인증 사용 가능 여부 확인
+        BiometricManager biometricManager = BiometricManager.from(requireContext());
+        boolean canUseBiometric = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK) == BiometricManager.BIOMETRIC_SUCCESS;
+        
+        if (!canUseBiometric) {
+            btnFingerprint.setVisibility(View.GONE);
+        }
+
+        androidx.appcompat.app.AlertDialog dialog = new MaterialAlertDialogBuilder(requireContext())
                 .setTitle("잠금 해제")
                 .setView(dialogView)
-                .setPositiveButton("확인", (dialog, which) -> {
+                .setPositiveButton("확인", (d, which) -> {
                     String password = etPassword.getText() != null ? etPassword.getText().toString() : "";
                     if (password.isEmpty()) {
-                        android.widget.Toast.makeText(requireContext(), "암호를 입력해주세요.", android.widget.Toast.LENGTH_SHORT).show();
+                        Toast.makeText(requireContext(), "암호를 입력해주세요.", Toast.LENGTH_SHORT).show();
                         return;
                     }
                     
                     if (dbHelper.verifyNotePassword(password)) {
                         // 암호가 맞으면 편집 화면으로 이동
-                        NoteEditFragment editFragment = NoteEditFragment.newInstance(note.getId());
-                        requireActivity().getSupportFragmentManager().beginTransaction()
-                                .replace(R.id.fragment_container, editFragment)
-                                .addToBackStack(null)
-                                .commit();
+                        openNoteEditor(noteId);
                     } else {
-                        android.widget.Toast.makeText(requireContext(), "암호가 올바르지 않습니다.", android.widget.Toast.LENGTH_SHORT).show();
+                        Toast.makeText(requireContext(), "암호가 올바르지 않습니다.", Toast.LENGTH_SHORT).show();
                     }
                 })
                 .setNegativeButton("취소", null)
-                .show();
+                .create();
+
+        // 지문 인증 버튼 클릭
+        btnFingerprint.setOnClickListener(v -> {
+            dialog.dismiss();
+            authenticateWithBiometric(noteId, false);
+        });
+
+        dialog.show();
+    }
+
+    private void openNoteEditor(long noteId) {
+        NoteEditFragment editFragment = NoteEditFragment.newInstance(noteId);
+        requireActivity().getSupportFragmentManager().beginTransaction()
+                .replace(R.id.fragment_container, editFragment)
+                .addToBackStack(null)
+                .commit();
+    }
+
+    private void authenticateWithBiometric(long noteId, boolean showPasswordOnCancel) {
+        BiometricPrompt.PromptInfo promptInfo = new BiometricPrompt.PromptInfo.Builder()
+                .setTitle("지문 인증")
+                .setSubtitle("지문을 인식하여 노트 잠금을 해제하세요")
+                .setNegativeButtonText(showPasswordOnCancel ? "암호 입력" : "취소")
+                .build();
+
+        BiometricPrompt biometricPrompt = new BiometricPrompt(
+                this,
+                ContextCompat.getMainExecutor(requireContext()),
+                new BiometricPrompt.AuthenticationCallback() {
+                    @Override
+                    public void onAuthenticationSucceeded(@NonNull BiometricPrompt.AuthenticationResult result) {
+                        super.onAuthenticationSucceeded(result);
+                        // 지문 인증 성공 시 노트 편집 화면으로 이동
+                        openNoteEditor(noteId);
+                    }
+
+                    @Override
+                    public void onAuthenticationError(int errorCode, @NonNull CharSequence errString) {
+                        super.onAuthenticationError(errorCode, errString);
+                        if (errorCode == BiometricPrompt.ERROR_USER_CANCELED || 
+                            errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON) {
+                            // 사용자가 취소하거나 "암호 입력" 버튼을 누른 경우
+                            if (showPasswordOnCancel) {
+                                showPasswordInputDialog(noteId);
+                            }
+                        } else {
+                            Toast.makeText(requireContext(), "지문 인증 실패: " + errString, Toast.LENGTH_SHORT).show();
+                            if (showPasswordOnCancel) {
+                                // 오류 발생 시에도 암호 입력 다이얼로그 표시
+                                showPasswordInputDialog(noteId);
+                            }
+                        }
+                    }
+
+                    @Override
+                    public void onAuthenticationFailed() {
+                        super.onAuthenticationFailed();
+                        Toast.makeText(requireContext(), "지문 인증에 실패했습니다.", Toast.LENGTH_SHORT).show();
+                    }
+                }
+        );
+
+        biometricPrompt.authenticate(promptInfo);
     }
 
     @Override
