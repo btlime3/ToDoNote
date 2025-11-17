@@ -13,6 +13,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+import kr.akotis.todonote.model.MemoItem;
+
 public class MemoAdapter extends RecyclerView.Adapter<MemoAdapter.MemoViewHolder> {
 
     private List<MemoItem> memoList;

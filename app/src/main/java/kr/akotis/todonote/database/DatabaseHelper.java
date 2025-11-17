@@ -1,4 +1,4 @@
-package kr.akotis.todonote;
+package kr.akotis.todonote.database;
 
 import android.content.ContentValues;
 import android.content.Context;
@@ -9,10 +9,14 @@ import android.database.sqlite.SQLiteOpenHelper;
 import java.util.ArrayList;
 import java.util.List;
 
+import kr.akotis.todonote.model.MemoItem;
+import kr.akotis.todonote.model.NoteItem;
+import kr.akotis.todonote.model.ToDoItem;
+
 public class DatabaseHelper extends SQLiteOpenHelper {
 
     private static final String DATABASE_NAME = "ToDoNote.db";
-    private static final int DATABASE_VERSION = 3;
+    private static final int DATABASE_VERSION = 4;
 
     // ToDo 테이블
     private static final String TABLE_TODO = "todo";
@@ -22,6 +26,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     private static final String COL_TODO_DATE = "date";
     private static final String COL_TODO_TIME = "time";
     private static final String COL_TODO_COMPLETED = "completed";
+    private static final String COL_TODO_CHECKED = "checked";
     private static final String COL_TODO_CREATED_AT = "created_at";
     private static final String COL_TODO_UPDATED_AT = "updated_at";
 
@@ -55,6 +60,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 COL_TODO_DATE + " INTEGER, " +
                 COL_TODO_TIME + " INTEGER, " +
                 COL_TODO_COMPLETED + " INTEGER DEFAULT 0, " +
+                COL_TODO_CHECKED + " INTEGER DEFAULT 0, " +
                 COL_TODO_CREATED_AT + " INTEGER, " +
                 COL_TODO_UPDATED_AT + " INTEGER)";
         db.execSQL(createTodoTable);
@@ -98,6 +104,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                     COL_TODO_DATE + " INTEGER, " +
                     COL_TODO_TIME + " INTEGER, " +
                     COL_TODO_COMPLETED + " INTEGER DEFAULT 0, " +
+                    COL_TODO_CHECKED + " INTEGER DEFAULT 0, " +
                     COL_TODO_CREATED_AT + " INTEGER, " +
                     COL_TODO_UPDATED_AT + " INTEGER)";
             db.execSQL(createTodoTable);
@@ -105,13 +112,17 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             db.execSQL("INSERT INTO " + TABLE_TODO + " (" +
                     COL_TODO_ID + ", " + COL_TODO_TITLE + ", " + COL_TODO_DETAIL + ", " +
                     COL_TODO_DATE + ", " + COL_TODO_TIME + ", " + COL_TODO_COMPLETED + ", " +
-                    COL_TODO_CREATED_AT + ", " + COL_TODO_UPDATED_AT + ") " +
+                    COL_TODO_CHECKED + ", " + COL_TODO_CREATED_AT + ", " + COL_TODO_UPDATED_AT + ") " +
                     "SELECT " + COL_TODO_ID + ", content, '', " +
                     System.currentTimeMillis() + ", " + System.currentTimeMillis() + ", " +
-                    COL_TODO_COMPLETED + ", " + COL_TODO_CREATED_AT + ", " + COL_TODO_UPDATED_AT +
+                    COL_TODO_COMPLETED + ", 0, " + COL_TODO_CREATED_AT + ", " + COL_TODO_UPDATED_AT +
                     " FROM " + TABLE_TODO + "_old");
             // 백업 테이블 삭제
             db.execSQL("DROP TABLE " + TABLE_TODO + "_old");
+        }
+        if (oldVersion < 4) {
+            // checked 컬럼 추가
+            db.execSQL("ALTER TABLE " + TABLE_TODO + " ADD COLUMN " + COL_TODO_CHECKED + " INTEGER DEFAULT 0");
         }
     }
 
@@ -125,6 +136,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         values.put(COL_TODO_DATE, todo.getDate());
         values.put(COL_TODO_TIME, todo.getTime());
         values.put(COL_TODO_COMPLETED, todo.isCompleted() ? 1 : 0);
+        values.put(COL_TODO_CHECKED, todo.isChecked() ? 1 : 0);
         values.put(COL_TODO_CREATED_AT, System.currentTimeMillis());
         values.put(COL_TODO_UPDATED_AT, System.currentTimeMillis());
 
@@ -133,30 +145,93 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         return id;
     }
 
+    /**
+     * Cursor에서 ToDoItem 객체로 변환하는 공통 메서드
+     */
+    private ToDoItem cursorToToDoItem(Cursor cursor) {
+        ToDoItem todo = new ToDoItem();
+        todo.setId(cursor.getLong(cursor.getColumnIndexOrThrow(COL_TODO_ID)));
+        todo.setTitle(cursor.getString(cursor.getColumnIndexOrThrow(COL_TODO_TITLE)));
+        
+        int detailIndex = cursor.getColumnIndex(COL_TODO_DETAIL);
+        todo.setDetail(detailIndex >= 0 ? cursor.getString(detailIndex) : "");
+        
+        int dateIndex = cursor.getColumnIndex(COL_TODO_DATE);
+        todo.setDate(dateIndex >= 0 ? cursor.getLong(dateIndex) : System.currentTimeMillis());
+        
+        int timeIndex = cursor.getColumnIndex(COL_TODO_TIME);
+        todo.setTime(timeIndex >= 0 ? cursor.getLong(timeIndex) : System.currentTimeMillis());
+        
+        todo.setCompleted(cursor.getInt(cursor.getColumnIndexOrThrow(COL_TODO_COMPLETED)) == 1);
+        
+        int checkedIndex = cursor.getColumnIndex(COL_TODO_CHECKED);
+        todo.setChecked(checkedIndex >= 0 && cursor.getInt(checkedIndex) == 1);
+        
+        todo.setCreatedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_TODO_CREATED_AT)));
+        todo.setUpdatedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_TODO_UPDATED_AT)));
+        
+        return todo;
+    }
+
+    /**
+     * 모든 ToDo 항목을 가져옵니다 (완료/미완료 구분 없이)
+     */
     public List<ToDoItem> getAllToDos() {
         List<ToDoItem> todoList = new ArrayList<>();
         SQLiteDatabase db = this.getReadableDatabase();
-        // 날짜 순으로 정렬 (날짜가 빠른 순서대로, 날짜가 같으면 시간 순)
-        Cursor cursor = db.query(TABLE_TODO, null, null, null, null, null, 
-                COL_TODO_DATE + " ASC, " + COL_TODO_TIME + " ASC");
+        String orderBy = COL_TODO_DATE + " ASC, " + COL_TODO_TIME + " ASC";
+        Cursor cursor = db.query(TABLE_TODO, null, null, null, null, null, orderBy);
 
         if (cursor.moveToFirst()) {
             do {
-                ToDoItem todo = new ToDoItem();
-                todo.setId(cursor.getLong(cursor.getColumnIndexOrThrow(COL_TODO_ID)));
-                todo.setTitle(cursor.getString(cursor.getColumnIndexOrThrow(COL_TODO_TITLE)));
-                int detailIndex = cursor.getColumnIndex(COL_TODO_DETAIL);
-                todo.setDetail(detailIndex >= 0 ? cursor.getString(detailIndex) : "");
-                int dateIndex = cursor.getColumnIndex(COL_TODO_DATE);
-                todo.setDate(dateIndex >= 0 ? cursor.getLong(dateIndex) : System.currentTimeMillis());
-                int timeIndex = cursor.getColumnIndex(COL_TODO_TIME);
-                todo.setTime(timeIndex >= 0 ? cursor.getLong(timeIndex) : System.currentTimeMillis());
-                todo.setCompleted(cursor.getInt(cursor.getColumnIndexOrThrow(COL_TODO_COMPLETED)) == 1);
-                todo.setCreatedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_TODO_CREATED_AT)));
-                todo.setUpdatedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_TODO_UPDATED_AT)));
-                todoList.add(todo);
+                todoList.add(cursorToToDoItem(cursor));
             } while (cursor.moveToNext());
         }
+        
+        cursor.close();
+        db.close();
+        return todoList;
+    }
+
+    /**
+     * 완료되지 않은 ToDo 항목만 가져옵니다 (위젯용)
+     */
+    public List<ToDoItem> getActiveToDos() {
+        List<ToDoItem> todoList = new ArrayList<>();
+        SQLiteDatabase db = this.getReadableDatabase();
+        String selection = COL_TODO_COMPLETED + " IS NULL OR " + COL_TODO_COMPLETED + " = ?";
+        String[] selectionArgs = {"0"};
+        String orderBy = COL_TODO_DATE + " ASC, " + COL_TODO_TIME + " ASC";
+        Cursor cursor = db.query(TABLE_TODO, null, selection, selectionArgs, null, null, orderBy);
+
+        if (cursor.moveToFirst()) {
+            do {
+                todoList.add(cursorToToDoItem(cursor));
+            } while (cursor.moveToNext());
+        }
+        
+        cursor.close();
+        db.close();
+        return todoList;
+    }
+
+    /**
+     * 완료된 ToDo 항목만 가져옵니다
+     */
+    public List<ToDoItem> getCompletedToDos() {
+        List<ToDoItem> todoList = new ArrayList<>();
+        SQLiteDatabase db = this.getReadableDatabase();
+        String selection = COL_TODO_COMPLETED + " = ?";
+        String[] selectionArgs = {"1"};
+        String orderBy = COL_TODO_DATE + " ASC, " + COL_TODO_TIME + " ASC";
+        Cursor cursor = db.query(TABLE_TODO, null, selection, selectionArgs, null, null, orderBy);
+
+        if (cursor.moveToFirst()) {
+            do {
+                todoList.add(cursorToToDoItem(cursor));
+            } while (cursor.moveToNext());
+        }
+        
         cursor.close();
         db.close();
         return todoList;
@@ -170,6 +245,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         values.put(COL_TODO_DATE, todo.getDate());
         values.put(COL_TODO_TIME, todo.getTime());
         values.put(COL_TODO_COMPLETED, todo.isCompleted() ? 1 : 0);
+        values.put(COL_TODO_CHECKED, todo.isChecked() ? 1 : 0);
         values.put(COL_TODO_UPDATED_AT, System.currentTimeMillis());
 
         int result = db.update(TABLE_TODO, values, COL_TODO_ID + " = ?", new String[]{String.valueOf(todo.getId())});
@@ -182,6 +258,21 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         int result = db.delete(TABLE_TODO, COL_TODO_ID + " = ?", new String[]{String.valueOf(id)});
         db.close();
         return result;
+    }
+
+    public ToDoItem getToDoById(long id) {
+        SQLiteDatabase db = this.getReadableDatabase();
+        Cursor cursor = db.query(TABLE_TODO, null, COL_TODO_ID + " = ?", 
+                new String[]{String.valueOf(id)}, null, null, null);
+
+        ToDoItem todo = null;
+        if (cursor.moveToFirst()) {
+            todo = cursorToToDoItem(cursor);
+        }
+        
+        cursor.close();
+        db.close();
+        return todo;
     }
 
     // ========== Memo CRUD ==========

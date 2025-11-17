@@ -1,0 +1,170 @@
+package kr.akotis.todonote;
+
+import android.os.Bundle;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.Toast;
+
+import androidx.annotation.NonNull;
+import androidx.fragment.app.Fragment;
+import androidx.recyclerview.widget.ItemTouchHelper;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
+
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+
+import java.util.List;
+
+import kr.akotis.todonote.database.DatabaseHelper;
+import kr.akotis.todonote.model.ToDoItem;
+
+public class CompletedToDoFragment extends Fragment {
+
+    private RecyclerView recyclerTodo;
+    private DatabaseHelper dbHelper;
+    private ToDoAdapter todoAdapter;
+
+    @Override
+    public View onCreateView(LayoutInflater inflater, ViewGroup container,
+                             Bundle savedInstanceState) {
+        View view = inflater.inflate(R.layout.fragment_completed_todo, container, false);
+
+        dbHelper = new DatabaseHelper(requireContext());
+        recyclerTodo = view.findViewById(R.id.recycler_todo);
+
+        // RecyclerView 설정
+        todoAdapter = new ToDoAdapter();
+        todoAdapter.setDatabaseHelper(dbHelper);
+        recyclerTodo.setLayoutManager(new LinearLayoutManager(requireContext()));
+        recyclerTodo.setAdapter(todoAdapter);
+
+        // 체크박스 리스너 설정 (완료 해제)
+        todoAdapter.setOnToDoCheckedChangeListener((todo, isChecked) -> {
+            if (!isChecked) {
+                // 완료 해제
+                recyclerTodo.post(() -> {
+                    todo.setCompleted(false);
+                    int result = dbHelper.updateToDo(todo);
+                    if (result > 0) {
+                        loadCompletedToDos();
+                    }
+                });
+            }
+        });
+
+        // 스와이프 제스처 설정
+        setupSwipeGesture();
+
+        // ToDo 목록 로드
+        loadCompletedToDos();
+
+        return view;
+    }
+
+    private void setupSwipeGesture() {
+        ItemTouchHelper.SimpleCallback itemTouchHelperCallback = new ItemTouchHelper.SimpleCallback(
+                0, ItemTouchHelper.LEFT) {
+            @Override
+            public boolean onMove(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder viewHolder, @NonNull RecyclerView.ViewHolder target) {
+                return false;
+            }
+
+            @Override
+            public void onSwiped(@NonNull RecyclerView.ViewHolder viewHolder, int direction) {
+                int position = viewHolder.getAdapterPosition();
+                ToDoItem todo = todoAdapter.getToDoAt(position);
+
+                if (direction == ItemTouchHelper.LEFT) {
+                    // 왼쪽 스와이프: 삭제 확인 다이얼로그 표시
+                    showDeleteConfirmDialog(todo, position);
+                } else {
+                    // 스와이프 취소 시 목록 새로고침
+                    loadCompletedToDos();
+                }
+            }
+
+            @Override
+            public void onChildDraw(@NonNull android.graphics.Canvas c, @NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder viewHolder, float dX, float dY, int actionState, boolean isCurrentlyActive) {
+                if (actionState == ItemTouchHelper.ACTION_STATE_SWIPE) {
+                    View itemView = viewHolder.itemView;
+                    android.graphics.Paint paint = new android.graphics.Paint();
+                    
+                    if (dX < 0) {
+                        // 왼쪽 스와이프 (삭제) - 빨간색 배경
+                        paint.setColor(0xFFFF6B6B); // 빨간색
+                        c.drawRect((float) itemView.getRight() + dX, (float) itemView.getTop(), (float) itemView.getRight(), (float) itemView.getBottom(), paint);
+                        
+                        // 삭제 아이콘
+                        android.graphics.drawable.Drawable deleteIcon = requireContext().getDrawable(android.R.drawable.ic_menu_delete);
+                        if (deleteIcon != null) {
+                            int iconMargin = (itemView.getHeight() - deleteIcon.getIntrinsicHeight()) / 2;
+                            int iconTop = itemView.getTop() + iconMargin;
+                            int iconBottom = iconTop + deleteIcon.getIntrinsicHeight();
+                            int iconRight = itemView.getRight() - iconMargin;
+                            int iconLeft = iconRight - deleteIcon.getIntrinsicWidth();
+                            deleteIcon.setBounds(iconLeft, iconTop, iconRight, iconBottom);
+                            deleteIcon.draw(c);
+                        }
+                    }
+                }
+                super.onChildDraw(c, recyclerView, viewHolder, dX, dY, actionState, isCurrentlyActive);
+            }
+        };
+
+        ItemTouchHelper itemTouchHelper = new ItemTouchHelper(itemTouchHelperCallback);
+        itemTouchHelper.attachToRecyclerView(recyclerTodo);
+    }
+
+    private void showDeleteConfirmDialog(ToDoItem todo, int position) {
+        // 스와이프 취소를 위해 목록 새로고침
+        loadCompletedToDos();
+        
+        // 삭제 확인 다이얼로그 표시
+        new MaterialAlertDialogBuilder(requireContext())
+                .setTitle("작업 삭제")
+                .setMessage("이 작업을 영구적으로 삭제하시겠습니까?")
+                .setPositiveButton("삭제", (dialog, which) -> {
+                    // 확인 시 영구 삭제
+                    int result = dbHelper.deleteToDo(todo.getId());
+                    if (result > 0) {
+                        // 목록에서 제거
+                        loadCompletedToDos();
+                        Toast.makeText(requireContext(), "작업이 삭제되었습니다.", Toast.LENGTH_SHORT).show();
+                    } else {
+                        loadCompletedToDos();
+                        Toast.makeText(requireContext(), "삭제에 실패했습니다.", Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton("취소", (dialog, which) -> {
+                    // 취소 시 아무 작업도 하지 않음 (이미 loadCompletedToDos()로 복원됨)
+                })
+                .setOnCancelListener(dialog -> {
+                    // 다이얼로그가 취소되면 아무 작업도 하지 않음
+                })
+                .show();
+    }
+
+    private void loadCompletedToDos() {
+        recyclerTodo.post(() -> {
+            // 완료된 항목만 가져오기
+            List<ToDoItem> completedTodos = dbHelper.getCompletedToDos();
+            todoAdapter.setToDos(completedTodos);
+        });
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        loadCompletedToDos();
+    }
+
+    @Override
+    public void onDestroyView() {
+        super.onDestroyView();
+        if (dbHelper != null) {
+            dbHelper.close();
+        }
+    }
+}
+

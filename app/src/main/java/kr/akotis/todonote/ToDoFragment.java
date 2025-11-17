@@ -2,6 +2,8 @@ package kr.akotis.todonote;
 
 import android.app.DatePickerDialog;
 import android.app.TimePickerDialog;
+import android.appwidget.AppWidgetManager;
+import android.content.ComponentName;
 import androidx.appcompat.app.AlertDialog;
 import android.os.Bundle;
 import android.view.LayoutInflater;
@@ -29,6 +31,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+
+import kr.akotis.todonote.database.DatabaseHelper;
+import kr.akotis.todonote.model.ToDoItem;
 
 public class ToDoFragment extends Fragment {
 
@@ -72,22 +77,13 @@ public class ToDoFragment extends Fragment {
 
         // RecyclerView 설정
         todoAdapter = new ToDoAdapter();
+        todoAdapter.setDatabaseHelper(dbHelper);
         recyclerTodo.setLayoutManager(new LinearLayoutManager(requireContext()));
         recyclerTodo.setAdapter(todoAdapter);
         
-        // 체크박스 리스너 설정 (완료 = 삭제)
-        todoAdapter.setOnToDoCheckedChangeListener((todo, isChecked) -> {
-            if (isChecked) {
-                // 완료 시 삭제
-                recyclerTodo.post(() -> {
-                    int result = dbHelper.deleteToDo(todo.getId());
-                    if (result > 0) {
-                        loadToDos();
-                        // Toast.makeText(requireContext(), "할 일이 완료되었습니다.", Toast.LENGTH_SHORT).show();
-                    }
-                });
-            }
-        });
+        // 체크박스 리스너 제거 (todo 화면에서는 체크박스로 완료 처리하지 않음)
+        // 완료는 스와이프로만 처리
+        todoAdapter.setOnToDoCheckedChangeListener(null);
 
         // 스와이프 제스처 설정
         setupSwipeGesture();
@@ -225,42 +221,23 @@ public class ToDoFragment extends Fragment {
             dayView.setTextColor(0xFF444444); // color_text_dark
         }
 
-        // 날짜 클릭 리스너
-        dayView.setOnClickListener(v -> {
-            Calendar clickedDate = (Calendar) day.clone();
-            clickedDate.set(Calendar.HOUR_OF_DAY, 0);
-            clickedDate.set(Calendar.MINUTE, 0);
-            clickedDate.set(Calendar.SECOND, 0);
-            clickedDate.set(Calendar.MILLISECOND, 0);
-            
-            // 같은 날짜를 다시 클릭하면 필터 해제
-            if (filteredDate != null &&
-                clickedDate.get(Calendar.YEAR) == filteredDate.get(Calendar.YEAR) &&
-                clickedDate.get(Calendar.MONTH) == filteredDate.get(Calendar.MONTH) &&
-                clickedDate.get(Calendar.DAY_OF_MONTH) == filteredDate.get(Calendar.DAY_OF_MONTH)) {
-                filteredDate = null;
-            } else {
-                // 다른 날짜 클릭 시 필터 변경
-                filteredDate = (Calendar) clickedDate.clone();
-            }
-            
-            selectedDate = (Calendar) day.clone();
-            updateCalendar();
-            filterToDosByDate();
-            updateCalendarStatus();
-        });
+        // 달력 클릭 비활성화
+        dayView.setOnClickListener(null);
+        dayView.setClickable(false);
 
         return dayView;
     }
 
     private void loadToDos() {
         recyclerTodo.post(() -> {
-            List<ToDoItem> todos = dbHelper.getAllToDos();
+            // 완료되지 않은 항목만 가져오기
+            List<ToDoItem> activeTodos = dbHelper.getActiveToDos();
             
-            // ToDo가 있는 날짜 수집
+            // ToDo가 있는 날짜 수집 (모든 ToDo 포함 - 달력 표시용)
+            List<ToDoItem> allTodos = dbHelper.getAllToDos();
             datesWithTodos.clear();
             Calendar cal = Calendar.getInstance();
-            for (ToDoItem todo : todos) {
+            for (ToDoItem todo : allTodos) {
                 cal.setTimeInMillis(todo.getDate());
                 cal.set(Calendar.HOUR_OF_DAY, 0);
                 cal.set(Calendar.MINUTE, 0);
@@ -276,41 +253,15 @@ public class ToDoFragment extends Fragment {
     }
     
     private void filterToDosByDate() {
-        List<ToDoItem> allTodos = dbHelper.getAllToDos();
-        
-        if (filteredDate == null) {
-            // 전체 보기
-            todoAdapter.setToDos(allTodos);
-        } else {
-            // 선택된 날짜만 필터링
-            List<ToDoItem> filteredTodos = new ArrayList<>();
-            Calendar cal = Calendar.getInstance();
-            for (ToDoItem todo : allTodos) {
-                cal.setTimeInMillis(todo.getDate());
-                cal.set(Calendar.HOUR_OF_DAY, 0);
-                cal.set(Calendar.MINUTE, 0);
-                cal.set(Calendar.SECOND, 0);
-                cal.set(Calendar.MILLISECOND, 0);
-                
-                if (cal.get(Calendar.YEAR) == filteredDate.get(Calendar.YEAR) &&
-                    cal.get(Calendar.MONTH) == filteredDate.get(Calendar.MONTH) &&
-                    cal.get(Calendar.DAY_OF_MONTH) == filteredDate.get(Calendar.DAY_OF_MONTH)) {
-                    filteredTodos.add(todo);
-                }
-            }
-            todoAdapter.setToDos(filteredTodos);
-        }
+        // 달력 클릭 비활성화로 인해 항상 전체 보기 (완료되지 않은 항목만)
+        List<ToDoItem> activeTodos = dbHelper.getActiveToDos();
+        todoAdapter.setToDos(activeTodos);
         updateCalendarStatus();
     }
     
     private void updateCalendarStatus() {
-        if (filteredDate == null) {
-            tvCalendarStatus.setText("전체 일정");
-        } else {
-            SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy년 MM월 dd일", Locale.getDefault());
-            String dateStr = dateFormat.format(filteredDate.getTime());
-            tvCalendarStatus.setText(dateStr + " 일정");
-        }
+        // 전체 일정 텍스트 제거
+        tvCalendarStatus.setVisibility(View.GONE);
     }
 
     private void showToDoInputDialog(ToDoItem todo) {
@@ -341,15 +292,19 @@ public class ToDoFragment extends Fragment {
 
         // 날짜 선택
         btnDate.setOnClickListener(v -> {
+            // 현재 선택된 날짜의 요일을 유지하기 위해 Calendar 복사
+            Calendar dateForPicker = (Calendar) selectedDate[0].clone();
+            
             DatePickerDialog datePickerDialog = new DatePickerDialog(
                     requireContext(),
                     (view, year, month, dayOfMonth) -> {
+                        // 선택한 날짜로 설정 (요일 유지)
                         selectedDate[0].set(year, month, dayOfMonth);
                         updateDateButton(btnDate, selectedDate[0]);
                     },
-                    selectedDate[0].get(Calendar.YEAR),
-                    selectedDate[0].get(Calendar.MONTH),
-                    selectedDate[0].get(Calendar.DAY_OF_MONTH)
+                    dateForPicker.get(Calendar.YEAR),
+                    dateForPicker.get(Calendar.MONTH),
+                    dateForPicker.get(Calendar.DAY_OF_MONTH)
             );
             datePickerDialog.show();
         });
@@ -392,6 +347,7 @@ public class ToDoFragment extends Fragment {
                 int result = dbHelper.updateToDo(editingTodo);
                 if (result > 0) {
                     loadToDos();
+                    updateWidget();
                     // Toast.makeText(requireContext(), "할 일이 수정되었습니다.", Toast.LENGTH_SHORT).show();
                 }
                 editingTodo = null;
@@ -403,7 +359,8 @@ public class ToDoFragment extends Fragment {
                 long id = dbHelper.insertToDo(newTodo);
                 if (id > 0) {
                     loadToDos();
-                    Toast.makeText(requireContext(), "할 일이 추가되었습니다.", Toast.LENGTH_SHORT).show();
+                    updateWidget();
+                    //Toast.makeText(requireContext(), "할 일이 추가되었습니다.", Toast.LENGTH_SHORT).show();
                 }
             }
 
@@ -442,11 +399,14 @@ public class ToDoFragment extends Fragment {
                 ToDoItem todo = todoAdapter.getToDoAt(position);
 
                 if (direction == ItemTouchHelper.LEFT) {
-                    // 왼쪽 스와이프: 완료
-                    completeToDo(todo, position);
+                    // 왼쪽 스와이프: 완료 확인 다이얼로그 표시
+                    showCompleteConfirmDialog(todo, position);
                 } else if (direction == ItemTouchHelper.RIGHT) {
                     // 오른쪽 스와이프: 수정
                     editToDo(todo);
+                } else {
+                    // 스와이프 취소 시 목록 새로고침
+                    loadToDos();
                 }
             }
 
@@ -504,17 +464,56 @@ public class ToDoFragment extends Fragment {
         loadToDos();
     }
 
-    private void completeToDo(ToDoItem todo, int position) {
-        // 완료 처리 = 삭제
-        recyclerTodo.post(() -> {
-            int result = dbHelper.deleteToDo(todo.getId());
-            if (result > 0) {
-                loadToDos();
-                // Toast.makeText(requireContext(), "할 일이 완료되었습니다.", Toast.LENGTH_SHORT).show();
-            } else {
-                loadToDos();
+    private void showCompleteConfirmDialog(ToDoItem todo, int position) {
+        // 스와이프 취소를 위해 목록 새로고침
+        loadToDos();
+        
+        // 완료 확인 다이얼로그 표시
+        new MaterialAlertDialogBuilder(requireContext())
+                .setTitle("작업 완료")
+                .setMessage("작업을 완료하시겠습니까?")
+                .setPositiveButton("확인", (dialog, which) -> {
+                    // 확인 시 완료 처리
+                    todo.setCompleted(true);
+                    int result = dbHelper.updateToDo(todo);
+                    if (result > 0) {
+                        // ToDo 목록에서 제거 (완료된 항목은 표시되지 않음)
+                        loadToDos();
+                        updateWidget();
+                    } else {
+                        loadToDos();
+                    }
+                })
+                .setNegativeButton("취소", (dialog, which) -> {
+                    // 취소 시 아무 작업도 하지 않음 (이미 loadToDos()로 복원됨)
+                })
+                .setOnCancelListener(dialog -> {
+                    // 다이얼로그가 취소되면 아무 작업도 하지 않음
+                })
+                .show();
+    }
+
+    private void updateWidget() {
+        if (getContext() != null) {
+            try {
+                AppWidgetManager appWidgetManager = AppWidgetManager.getInstance(getContext());
+                ComponentName componentName = new ComponentName(getContext(), ToDoWidgetProvider.class);
+                int[] appWidgetIds = appWidgetManager.getAppWidgetIds(componentName);
+                android.util.Log.d("ToDoFragment", "updateWidget called, found " + appWidgetIds.length + " widget(s)");
+                if (appWidgetIds.length > 0) {
+                    // 모든 위젯 인스턴스 업데이트
+                    for (int appWidgetId : appWidgetIds) {
+                        ToDoWidgetProvider.updateAppWidget(getContext(), appWidgetManager, appWidgetId);
+                    }
+                    appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetIds, R.id.widget_todo_list);
+                    android.util.Log.d("ToDoFragment", "Widget update completed");
+                } else {
+                    android.util.Log.d("ToDoFragment", "No widgets found to update");
+                }
+            } catch (Exception e) {
+                android.util.Log.e("ToDoFragment", "Error updating widget", e);
             }
-        });
+        }
     }
 
     @Override

@@ -16,11 +16,15 @@ import java.util.Calendar;
 import java.util.List;
 import java.util.Locale;
 
+import kr.akotis.todonote.database.DatabaseHelper;
+import kr.akotis.todonote.model.ToDoItem;
+
 public class ToDoAdapter extends RecyclerView.Adapter<ToDoAdapter.ToDoViewHolder> {
 
     private List<ToDoItem> todoList;
     private OnToDoClickListener listener;
     private OnToDoCheckedChangeListener checkedListener;
+    private DatabaseHelper dbHelper;
 
     public interface OnToDoClickListener {
         void onToDoClick(ToDoItem todo);
@@ -32,6 +36,10 @@ public class ToDoAdapter extends RecyclerView.Adapter<ToDoAdapter.ToDoViewHolder
 
     public ToDoAdapter() {
         this.todoList = new ArrayList<>();
+    }
+
+    public void setDatabaseHelper(DatabaseHelper dbHelper) {
+        this.dbHelper = dbHelper;
     }
 
     public void setOnToDoClickListener(OnToDoClickListener listener) {
@@ -53,6 +61,7 @@ public class ToDoAdapter extends RecyclerView.Adapter<ToDoAdapter.ToDoViewHolder
     @Override
     public void onBindViewHolder(@NonNull ToDoViewHolder holder, int position) {
         ToDoItem todo = todoList.get(position);
+        // 데이터베이스에서 읽어온 체크 상태를 화면에 반영
         holder.bind(todo);
     }
 
@@ -62,7 +71,9 @@ public class ToDoAdapter extends RecyclerView.Adapter<ToDoAdapter.ToDoViewHolder
     }
 
     public void setToDos(List<ToDoItem> todos) {
-        this.todoList = todos;
+        this.todoList = todos != null ? todos : new ArrayList<>();
+        // notifyDataSetChanged()를 호출하여 모든 ViewHolder가 재바인딩되도록 함
+        // 이때 bind() 메서드에서 데이터베이스의 체크 상태가 체크박스에 반영됨
         notifyDataSetChanged();
     }
 
@@ -136,27 +147,92 @@ public class ToDoAdapter extends RecyclerView.Adapter<ToDoAdapter.ToDoViewHolder
         }
 
         public void bind(ToDoItem todo) {
-            // 리스너를 일시적으로 제거하여 bind 중 리스너 트리거 방지
+            // 체크박스 리스너를 먼저 제거하여 setChecked 호출 시 리스너가 트리거되지 않도록 함
             checkboxTodo.setOnCheckedChangeListener(null);
-            checkboxTodo.setChecked(false); // 완료는 삭제로 처리하므로 항상 false
-            checkboxTodo.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            
+            // 데이터베이스에서 읽어온 체크 상태를 체크박스에 설정
+            boolean isChecked = todo.isChecked();
+            android.util.Log.d("ToDoAdapter", "bind: todo id=" + todo.getId() + ", title=" + todo.getTitle() + ", isChecked=" + isChecked);
+            
+            // 체크박스에 현재 todo 객체를 태그로 저장 (ViewHolder 재사용 시 확인용)
+            checkboxTodo.setTag(todo);
+            
+            // 체크 상태를 체크박스에 무조건 설정 (데이터베이스의 체크 상태를 화면에 반영)
+            // RecyclerView ViewHolder 재사용으로 인해 이전 상태가 남아있을 수 있으므로 항상 설정
+            checkboxTodo.setChecked(isChecked);
+            
+            // 체크박스 상태 강제 업데이트
+            checkboxTodo.jumpDrawablesToCurrentState();
+            checkboxTodo.refreshDrawableState();
+            
+            // 체크박스 클릭 활성화
+            checkboxTodo.setClickable(true);
+            checkboxTodo.setFocusable(true);
+            
+            // 체크박스 클릭 시 체크 상태 저장 및 UI 업데이트
+            checkboxTodo.setOnCheckedChangeListener((buttonView, checked) -> {
+                // 태그에서 todo 객체 가져오기
+                ToDoItem currentTodo = (ToDoItem) buttonView.getTag();
+                if (currentTodo == null || currentTodo.getId() != todo.getId()) {
+                    // ViewHolder 재사용으로 인한 불일치 방지
+                    return;
+                }
+                
+                // 체크 상태 업데이트
+                todo.setChecked(checked);
+                // 데이터베이스에 저장
+                if (dbHelper != null) {
+                    dbHelper.updateToDo(todo);
+                }
+                // UI 업데이트 (취소선)
+                updateTextStrikethrough(todo, checked);
+                // 알파값 조정
+                if (!todo.isCompleted()) {
+                    tvTitle.setAlpha(checked ? 0.5f : 1.0f);
+                    tvDate.setAlpha(checked ? 0.5f : 1.0f);
+                    tvTime.setAlpha(checked ? 0.5f : 1.0f);
+                }
+                // 외부 리스너 호출 (완료 상태 변경 등)
                 if (checkedListener != null) {
-                    int position = getAdapterPosition();
-                    if (position != RecyclerView.NO_POSITION) {
-                        checkedListener.onCheckedChanged(todoList.get(position), isChecked);
-                    }
+                    checkedListener.onCheckedChanged(todo, checked);
                 }
             });
             
-            tvTitle.setText(todo.getTitle());
-            tvTitle.setAlpha(1.0f);
-            tvTitle.setPaintFlags(tvTitle.getPaintFlags() & ~android.graphics.Paint.STRIKE_THRU_TEXT_FLAG);
+            // 체크 상태에 따라 취소선 표시
+            updateTextStrikethrough(todo, isChecked);
             
+            // 완료된 항목은 취소선 표시 (완료 상태는 별도)
+            boolean isCompleted = todo.isCompleted();
+            if (isCompleted) {
+                tvTitle.setAlpha(0.5f);
+                tvDate.setAlpha(0.5f);
+                tvTime.setAlpha(0.5f);
+            } else {
+                // 체크 상태에 따라 알파값 조정
+                tvTitle.setAlpha(isChecked ? 0.5f : 1.0f);
+                tvDate.setAlpha(isChecked ? 0.5f : 1.0f);
+                tvTime.setAlpha(isChecked ? 0.5f : 1.0f);
+            }
+        }
+        
+        private void updateTextStrikethrough(ToDoItem todo, boolean isChecked) {
+            // 제목 취소선
+            tvTitle.setText(todo.getTitle());
+            if (isChecked) {
+                tvTitle.setPaintFlags(tvTitle.getPaintFlags() | android.graphics.Paint.STRIKE_THRU_TEXT_FLAG);
+            } else {
+                tvTitle.setPaintFlags(tvTitle.getPaintFlags() & ~android.graphics.Paint.STRIKE_THRU_TEXT_FLAG);
+            }
+            
+            // 상세 취소선
             if (todo.getDetail() != null && !todo.getDetail().isEmpty()) {
                 tvDetail.setText(todo.getDetail());
                 tvDetail.setVisibility(View.VISIBLE);
-                tvDetail.setAlpha(1.0f);
-                tvDetail.setPaintFlags(tvDetail.getPaintFlags() & ~android.graphics.Paint.STRIKE_THRU_TEXT_FLAG);
+                if (isChecked) {
+                    tvDetail.setPaintFlags(tvDetail.getPaintFlags() | android.graphics.Paint.STRIKE_THRU_TEXT_FLAG);
+                } else {
+                    tvDetail.setPaintFlags(tvDetail.getPaintFlags() & ~android.graphics.Paint.STRIKE_THRU_TEXT_FLAG);
+                }
             } else {
                 tvDetail.setVisibility(View.GONE);
             }

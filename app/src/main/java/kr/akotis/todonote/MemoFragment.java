@@ -24,6 +24,9 @@ import com.google.android.material.textfield.TextInputEditText;
 
 import java.util.List;
 
+import kr.akotis.todonote.database.DatabaseHelper;
+import kr.akotis.todonote.model.MemoItem;
+
 import static android.content.Context.INPUT_METHOD_SERVICE;
 
 public class MemoFragment extends Fragment {

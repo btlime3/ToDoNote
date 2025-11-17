@@ -49,8 +49,13 @@ public class MainActivity extends AppCompatActivity {
         setupBottomNavigation();
         setupWindowInsets();
 
-        // 기본 화면을 메모 탭으로 설정
-        if (savedInstanceState == null) {
+        // Intent에서 fragment 파라미터 확인 (위젯에서 호출된 경우)
+        String fragmentName = getIntent().getStringExtra("fragment");
+        if (fragmentName != null && fragmentName.equals("todo")) {
+            loadFragment(new ToDoFragment());
+            bottomNav.setSelectedItemId(R.id.nav_todo);
+        } else if (savedInstanceState == null) {
+            // 기본 화면을 메모 탭으로 설정
             loadFragment(new MemoFragment());
             bottomNav.setSelectedItemId(R.id.nav_memo);
         }
@@ -85,7 +90,9 @@ public class MainActivity extends AppCompatActivity {
 
     // 상단 NavBar 목록 메뉴들
     private void handleDrawerItemClick(int itemId) {
-        if (itemId == R.id.nav_export) {
+        if (itemId == R.id.nav_completed_todo) {
+            loadFragment(new CompletedToDoFragment());
+        } else if (itemId == R.id.nav_export) {
             // TODO: 내보내기 기능 구현
         } else if (itemId == R.id.nav_import) {
             // TODO: 가져오기 기능 구현

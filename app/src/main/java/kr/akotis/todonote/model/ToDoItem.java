@@ -1,4 +1,4 @@
-package kr.akotis.todonote;
+package kr.akotis.todonote.model;
 
 public class ToDoItem {
     private long id;
@@ -7,6 +7,7 @@ public class ToDoItem {
     private long date; // 날짜 (년월일만, 시간 제외)
     private long time; // 시간 (밀리초)
     private boolean isCompleted;
+    private boolean isChecked; // 체크 상태 (UI용, 완료 여부와 무관)
     private long createdAt;
     private long updatedAt;
 
@@ -19,6 +20,7 @@ public class ToDoItem {
         this.date = date;
         this.time = time;
         this.isCompleted = false;
+        this.isChecked = false;
         this.createdAt = System.currentTimeMillis();
         this.updatedAt = System.currentTimeMillis();
     }
@@ -69,6 +71,14 @@ public class ToDoItem {
 
     public void setCompleted(boolean completed) {
         isCompleted = completed;
+    }
+
+    public boolean isChecked() {
+        return isChecked;
+    }
+
+    public void setChecked(boolean checked) {
+        isChecked = checked;
     }
 
     public long getCreatedAt() {

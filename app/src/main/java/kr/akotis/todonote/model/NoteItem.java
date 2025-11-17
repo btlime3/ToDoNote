@@ -1,4 +1,4 @@
-package kr.akotis.todonote;
+package kr.akotis.todonote.model;
 
 public class NoteItem {
     private long id;
