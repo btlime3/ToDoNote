@@ -7,6 +7,7 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
+import android.util.Log;
 import android.widget.RemoteViews;
 
 import kr.akotis.todonote.database.DatabaseHelper;
@@ -44,13 +45,14 @@ public class ToDoWidgetProvider extends AppWidgetProvider {
                 context, 0, appIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         views.setOnClickPendingIntent(R.id.widget_title, appPendingIntent);
         
-        // 위젯 리스트 항목 클릭 시 앱 열기 (TodoFragment로 이동)
-        Intent listIntent = new Intent(context, MainActivity.class);
-        listIntent.putExtra("fragment", "todo");
-        listIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        PendingIntent listPendingIntent = PendingIntent.getActivity(
-                context, 0, listIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        views.setPendingIntentTemplate(R.id.widget_todo_list, listPendingIntent);
+        // 체크박스 클릭을 위한 템플릿 설정 (먼저 설정해야 함)
+        Intent toggleTemplateIntent = new Intent(context, ToDoWidgetProvider.class);
+        toggleTemplateIntent.setAction(ACTION_TOGGLE_TODO);
+        // 템플릿 Intent에 data URI 패턴 설정 (FillInIntent와 병합될 때 사용)
+        toggleTemplateIntent.setData(Uri.parse("widget://todo/"));
+        PendingIntent toggleTemplatePendingIntent = PendingIntent.getBroadcast(
+                context, 0, toggleTemplateIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        views.setPendingIntentTemplate(R.id.widget_todo_list, toggleTemplatePendingIntent);
 
         // 데이터 변경 알림 후 위젯 업데이트
         appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.widget_todo_list);
@@ -59,20 +61,91 @@ public class ToDoWidgetProvider extends AppWidgetProvider {
 
     @Override
     public void onReceive(Context context, Intent intent) {
-        super.onReceive(context, intent);
-
-        if (ACTION_TOGGLE_TODO.equals(intent.getAction())) {
+        String action = intent.getAction();
+        
+        // 커스텀 액션을 먼저 처리
+        if (ACTION_TOGGLE_TODO.equals(action)) {
+            // Intent의 모든 내용 로그 출력
+            Log.d("ToDoWidget", "Intent action: " + intent.getAction());
+            Log.d("ToDoWidget", "Intent data: " + intent.getData());
+            Log.d("ToDoWidget", "Intent extras: " + intent.getExtras());
+            if (intent.getExtras() != null) {
+                for (String key : intent.getExtras().keySet()) {
+                    Log.d("ToDoWidget", "Extra key: " + key + ", value: " + intent.getExtras().get(key));
+                }
+            }
+            
             long todoId = intent.getLongExtra(EXTRA_TODO_ID, -1);
+            
+            // FillInIntent에서 extra가 전달되지 않으므로 URI에서 추출 시도
+            // 템플릿과 FillInIntent가 병합될 때 data URI가 병합됨
+            Uri data = intent.getData();
+            if (data != null) {
+                String uriString = data.toString();
+                Log.d("ToDoWidget", "Parsing todoId from URI: " + uriString);
+                // URI 형식: widget://todo/{todoId}
+                if (uriString.contains("/todo/")) {
+                    try {
+                        int startIndex = uriString.indexOf("/todo/") + 6;
+                        int endIndex = uriString.indexOf("/", startIndex);
+                        if (endIndex == -1) {
+                            endIndex = uriString.length();
+                        }
+                        String todoIdStr = uriString.substring(startIndex, endIndex);
+                        todoId = Long.parseLong(todoIdStr);
+                        Log.d("ToDoWidget", "Extracted todoId from URI: " + todoId);
+                    } catch (Exception e) {
+                        Log.e("ToDoWidget", "Failed to parse todoId from URI: " + uriString, e);
+                    }
+                }
+            }
+            
+            Log.d("ToDoWidget", "Toggle action received, todoId: " + todoId + ", URI: " + intent.getData());
+            
             if (todoId != -1) {
                 DatabaseHelper dbHelper = new DatabaseHelper(context);
                 ToDoItem todo = dbHelper.getToDoById(todoId);
+                
                 if (todo != null) {
-                    dbHelper.deleteToDo(todoId);
-                    updateAllWidgets(context);
+                    // 체크 상태 토글
+                    boolean currentState = todo.isChecked();
+                    boolean newCheckedState = !currentState;
+                    Log.d("ToDoWidget", "Toggling todo " + todoId + " from " + currentState + " to " + newCheckedState);
+                    
+                    todo.setChecked(newCheckedState);
+                    int result = dbHelper.updateToDo(todo);
+                    dbHelper.close();
+                    
+                    Log.d("ToDoWidget", "Update result: " + result);
+                    
+                    // 위젯 업데이트
+                    AppWidgetManager appWidgetManager = AppWidgetManager.getInstance(context);
+                    ComponentName componentName = new ComponentName(context, ToDoWidgetProvider.class);
+                    int[] appWidgetIds = appWidgetManager.getAppWidgetIds(componentName);
+                    
+                    Log.d("ToDoWidget", "Found " + appWidgetIds.length + " widget(s) to update");
+                    
+                    // 데이터 변경 알림 (먼저 호출)
+                    for (int appWidgetId : appWidgetIds) {
+                        appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.widget_todo_list);
+                    }
+                    
+                    // 위젯 업데이트
+                    onUpdate(context, appWidgetManager, appWidgetIds);
+                    
+                    Log.d("ToDoWidget", "Widget update completed");
+                } else {
+                    Log.d("ToDoWidget", "Todo not found: " + todoId);
+                    dbHelper.close();
                 }
-                dbHelper.close();
+            } else {
+                Log.d("ToDoWidget", "Invalid todoId: " + todoId);
             }
+            return; // 커스텀 액션 처리 후 종료
         }
+        
+        // 다른 액션은 기본 처리
+        super.onReceive(context, intent);
     }
 
     @Override

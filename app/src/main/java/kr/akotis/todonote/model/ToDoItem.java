@@ -8,6 +8,8 @@ public class ToDoItem {
     private long time; // 시간 (밀리초)
     private boolean isCompleted;
     private boolean isChecked; // 체크 상태 (UI용, 완료 여부와 무관)
+    private String notificationType; // 알림 타입 (예: "morning_10min", "30min" 등)
+    private String workRequestId; // WorkManager 요청 ID (알림 취소용)
     private long createdAt;
     private long updatedAt;
 
@@ -95,6 +97,22 @@ public class ToDoItem {
 
     public void setUpdatedAt(long updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public String getNotificationType() {
+        return notificationType;
+    }
+
+    public void setNotificationType(String notificationType) {
+        this.notificationType = notificationType;
+    }
+
+    public String getWorkRequestId() {
+        return workRequestId;
+    }
+
+    public void setWorkRequestId(String workRequestId) {
+        this.workRequestId = workRequestId;
     }
 }
 

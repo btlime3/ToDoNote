@@ -3,6 +3,8 @@ package kr.akotis.todonote.adapter;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -104,6 +106,8 @@ public class TrashAdapter extends RecyclerView.Adapter<TrashAdapter.TrashViewHol
         private TextView tvMemoContent;
         private TextView tvNoteTitle;
         private TextView tvNoteContent;
+        private FrameLayout layoutLocked;
+        private ImageView ivLock;
         private TextView tvDeletedDate;
 
         public TrashViewHolder(@NonNull View itemView) {
@@ -112,6 +116,8 @@ public class TrashAdapter extends RecyclerView.Adapter<TrashAdapter.TrashViewHol
             tvMemoContent = itemView.findViewById(R.id.tv_memo_content);
             tvNoteTitle = itemView.findViewById(R.id.tv_note_title);
             tvNoteContent = itemView.findViewById(R.id.tv_note_content);
+            layoutLocked = itemView.findViewById(R.id.layout_locked);
+            ivLock = itemView.findViewById(R.id.iv_lock);
             tvDeletedDate = itemView.findViewById(R.id.tv_deleted_date);
 
             itemView.setOnClickListener(v -> {
@@ -133,6 +139,7 @@ public class TrashAdapter extends RecyclerView.Adapter<TrashAdapter.TrashViewHol
                 tvMemoContent.setVisibility(View.VISIBLE);
                 tvNoteTitle.setVisibility(View.GONE);
                 tvNoteContent.setVisibility(View.GONE);
+                layoutLocked.setVisibility(View.GONE);
                 tvMemoContent.setText(memo.getContent());
                 tvDeletedDate.setText("삭제된 날짜: " + dateFormat.format(memo.getDeletedAt()));
             } else if (trashItem.getType() == TrashItem.TYPE_NOTE) {
@@ -140,9 +147,19 @@ public class TrashAdapter extends RecyclerView.Adapter<TrashAdapter.TrashViewHol
                 tvItemType.setText("노트");
                 tvMemoContent.setVisibility(View.GONE);
                 tvNoteTitle.setVisibility(View.VISIBLE);
-                tvNoteContent.setVisibility(View.VISIBLE);
                 tvNoteTitle.setText(note.getTitle() != null && !note.getTitle().isEmpty() ? note.getTitle() : "제목 없음");
-                tvNoteContent.setText(note.getContent() != null && !note.getContent().isEmpty() ? note.getContent() : "내용 없음");
+                
+                // 잠금된 노트인 경우
+                if (note.isLocked()) {
+                    tvNoteContent.setVisibility(View.GONE);
+                    layoutLocked.setVisibility(View.VISIBLE);
+                } else {
+                    // 잠금되지 않은 노트인 경우
+                    tvNoteContent.setVisibility(View.VISIBLE);
+                    layoutLocked.setVisibility(View.GONE);
+                    tvNoteContent.setText(note.getContent() != null && !note.getContent().isEmpty() ? note.getContent() : "내용 없음");
+                }
+                
                 tvDeletedDate.setText("삭제된 날짜: " + dateFormat.format(note.getDeletedAt()));
             }
         }

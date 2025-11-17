@@ -127,9 +127,11 @@ public class ToDoAdapter extends RecyclerView.Adapter<ToDoAdapter.ToDoViewHolder
         private TextView tvDetail;
         private TextView tvDate;
         private TextView tvTime;
+        private com.google.android.material.card.MaterialCardView cardView;
 
         public ToDoViewHolder(@NonNull View itemView) {
             super(itemView);
+            cardView = itemView.findViewById(R.id.card_todo);
             checkboxTodo = itemView.findViewById(R.id.checkbox_todo);
             tvTitle = itemView.findViewById(R.id.tv_todo_title);
             tvDetail = itemView.findViewById(R.id.tv_todo_detail);
@@ -201,6 +203,9 @@ public class ToDoAdapter extends RecyclerView.Adapter<ToDoAdapter.ToDoViewHolder
             // 체크 상태에 따라 취소선 표시
             updateTextStrikethrough(todo, isChecked);
             
+            // 날짜별 스타일 적용
+            applyDateBasedStyle(todo);
+            
             // 완료된 항목은 취소선 표시 (완료 상태는 별도)
             boolean isCompleted = todo.isCompleted();
             if (isCompleted) {
@@ -212,6 +217,58 @@ public class ToDoAdapter extends RecyclerView.Adapter<ToDoAdapter.ToDoViewHolder
                 tvTitle.setAlpha(isChecked ? 0.5f : 1.0f);
                 tvDate.setAlpha(isChecked ? 0.5f : 1.0f);
                 tvTime.setAlpha(isChecked ? 0.5f : 1.0f);
+            }
+        }
+        
+        private void applyDateBasedStyle(ToDoItem todo) {
+            Calendar now = Calendar.getInstance();
+            Calendar todoDateTime = Calendar.getInstance();
+            todoDateTime.setTimeInMillis(todo.getDate());
+            Calendar todoTime = Calendar.getInstance();
+            todoTime.setTimeInMillis(todo.getTime());
+            todoDateTime.set(Calendar.HOUR_OF_DAY, todoTime.get(Calendar.HOUR_OF_DAY));
+            todoDateTime.set(Calendar.MINUTE, todoTime.get(Calendar.MINUTE));
+            todoDateTime.set(Calendar.SECOND, 0);
+            todoDateTime.set(Calendar.MILLISECOND, 0);
+            
+            // 오늘 날짜인지 확인 (날짜만 비교)
+            Calendar today = Calendar.getInstance();
+            today.set(Calendar.HOUR_OF_DAY, 0);
+            today.set(Calendar.MINUTE, 0);
+            today.set(Calendar.SECOND, 0);
+            today.set(Calendar.MILLISECOND, 0);
+            
+            Calendar todoDate = Calendar.getInstance();
+            todoDate.setTimeInMillis(todo.getDate());
+            todoDate.set(Calendar.HOUR_OF_DAY, 0);
+            todoDate.set(Calendar.MINUTE, 0);
+            todoDate.set(Calendar.SECOND, 0);
+            todoDate.set(Calendar.MILLISECOND, 0);
+            
+            boolean isToday = today.getTimeInMillis() == todoDate.getTimeInMillis();
+            boolean isPast = todoDateTime.getTimeInMillis() < now.getTimeInMillis();
+            
+            if (cardView != null) {
+                if (isToday) {
+                    // 오늘인 경우 하이라이트 배경
+                    cardView.setCardBackgroundColor(itemView.getContext().getColor(R.color.color_accent_light));
+                    // 텍스트 색상 기본값 유지
+                    tvTitle.setTextColor(itemView.getContext().getColor(R.color.color_text_dark));
+                    tvDate.setTextColor(itemView.getContext().getColor(R.color.color_text_medium));
+                    tvTime.setTextColor(itemView.getContext().getColor(R.color.color_text_medium));
+                } else if (isPast) {
+                    // 지난 경우 회색 배경 및 텍스트
+                    cardView.setCardBackgroundColor(0xFFE0E0E0); // 연한 회색
+                    tvTitle.setTextColor(0xFF999999); // 회색 텍스트
+                    tvDate.setTextColor(0xFF999999);
+                    tvTime.setTextColor(0xFF999999);
+                } else {
+                    // 기본 색상
+                    cardView.setCardBackgroundColor(itemView.getContext().getColor(R.color.color_surface));
+                    tvTitle.setTextColor(itemView.getContext().getColor(R.color.color_text_dark));
+                    tvDate.setTextColor(itemView.getContext().getColor(R.color.color_text_medium));
+                    tvTime.setTextColor(itemView.getContext().getColor(R.color.color_text_medium));
+                }
             }
         }
         

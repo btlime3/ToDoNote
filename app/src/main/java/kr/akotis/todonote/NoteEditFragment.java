@@ -107,7 +107,7 @@ public class NoteEditFragment extends Fragment {
     private void updateLockButton() {
         if (editingNote != null && btnLock != null) {
             if (editingNote.isLocked()) {
-                btnLock.setText("잠금 해제");
+                btnLock.setText("해제");
             } else {
                 btnLock.setText("잠금");
             }
@@ -146,7 +146,7 @@ public class NoteEditFragment extends Fragment {
             editingNote.setContent(content);
             int result = dbHelper.updateNote(editingNote);
             if (result > 0) {
-                Toast.makeText(requireContext(), "노트가 수정되었습니다.", Toast.LENGTH_SHORT).show();
+                //Toast.makeText(requireContext(), "노트가 수정되었습니다.", Toast.LENGTH_SHORT).show();
                 if (getActivity() != null) {
                     getActivity().onBackPressed();
                 }
@@ -158,7 +158,7 @@ public class NoteEditFragment extends Fragment {
             NoteItem newNote = new NoteItem(title, content);
             long id = dbHelper.insertNote(newNote);
             if (id > 0) {
-                Toast.makeText(requireContext(), "노트가 저장되었습니다.", Toast.LENGTH_SHORT).show();
+                //Toast.makeText(requireContext(), "노트가 저장되었습니다.", Toast.LENGTH_SHORT).show();
                 if (getActivity() != null) {
                     getActivity().onBackPressed();
                 }
@@ -183,7 +183,7 @@ public class NoteEditFragment extends Fragment {
         if (noteId != -1) {
             int result = dbHelper.deleteNote(noteId);
             if (result > 0) {
-                Toast.makeText(requireContext(), "노트가 삭제되었습니다.", Toast.LENGTH_SHORT).show();
+                //Toast.makeText(requireContext(), "노트가 삭제되었습니다.", Toast.LENGTH_SHORT).show();
                 if (getActivity() != null) {
                     getActivity().onBackPressed();
                 }

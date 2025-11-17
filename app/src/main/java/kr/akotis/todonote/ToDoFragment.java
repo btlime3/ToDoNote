@@ -26,14 +26,26 @@ import com.google.android.material.textfield.TextInputEditText;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Calendar;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+
+import android.widget.ArrayAdapter;
+import android.widget.AutoCompleteTextView;
+
+import androidx.work.Data;
+import androidx.work.ExistingWorkPolicy;
+import androidx.work.OneTimeWorkRequest;
+import androidx.work.WorkManager;
 
 import kr.akotis.todonote.database.DatabaseHelper;
 import kr.akotis.todonote.model.ToDoItem;
+import kr.akotis.todonote.worker.ToDoNotificationWorker;
 
 public class ToDoFragment extends Fragment {
 
@@ -272,12 +284,33 @@ public class ToDoFragment extends Fragment {
         TextInputEditText etDetail = dialogView.findViewById(R.id.et_todo_detail);
         MaterialButton btnDate = dialogView.findViewById(R.id.btn_todo_date);
         MaterialButton btnTime = dialogView.findViewById(R.id.btn_todo_time);
+        AutoCompleteTextView spinnerNotification = dialogView.findViewById(R.id.spinner_notification);
         MaterialButton btnSave = dialogView.findViewById(R.id.btn_todo_save);
         MaterialButton btnCancel = dialogView.findViewById(R.id.btn_todo_cancel);
+
+        // 알림 옵션 설정
+        String[] notificationOptions = {
+            "아침 + 10분전",
+            "아침 + 30분전",
+            "아침 + 1시간전",
+            "아침 + 2시간전",
+            "아침 + 3시간전",
+            "10분전",
+            "30분전",
+            "1시간전",
+            "2시간전",
+            "3시간전"
+        };
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(requireContext(),
+                android.R.layout.simple_dropdown_item_1line, notificationOptions);
+        spinnerNotification.setAdapter(adapter);
+        spinnerNotification.setThreshold(0); // 첫 글자 입력 없이도 드롭다운 표시
+        spinnerNotification.setText("아침 + 10분전", false); // 기본값
 
         // 날짜와 시간 초기화
         final Calendar[] selectedDate = {Calendar.getInstance()};
         final Calendar[] selectedTime = {Calendar.getInstance()};
+        final String[] selectedNotificationType = {"morning_10min"}; // 기본값
         
         if (todo != null) {
             editingTodo = todo;
@@ -285,7 +318,35 @@ public class ToDoFragment extends Fragment {
             etDetail.setText(todo.getDetail());
             selectedDate[0].setTimeInMillis(todo.getDate());
             selectedTime[0].setTimeInMillis(todo.getTime());
+            
+            // 기존 알림 타입 설정
+            if (todo.getNotificationType() != null) {
+                String notificationType = todo.getNotificationType();
+                String displayText = getNotificationDisplayText(notificationType);
+                if (displayText != null) {
+                    spinnerNotification.setText(displayText, false);
+                    selectedNotificationType[0] = notificationType;
+                }
+            }
         }
+        
+        // 알림 선택 리스너
+        spinnerNotification.setOnItemClickListener((parent, view, position, id) -> {
+            String selected = notificationOptions[position];
+            selectedNotificationType[0] = getNotificationTypeFromDisplay(selected);
+        });
+        
+        // 클릭 시 드롭다운 열기
+        spinnerNotification.setOnClickListener(v -> {
+            spinnerNotification.showDropDown();
+        });
+        
+        // 포커스 시 드롭다운 열기
+        spinnerNotification.setOnFocusChangeListener((v, hasFocus) -> {
+            if (hasFocus) {
+                spinnerNotification.showDropDown();
+            }
+        });
         
         updateDateButton(btnDate, selectedDate[0]);
         updateTimeButton(btnTime, selectedTime[0]);
@@ -339,11 +400,21 @@ public class ToDoFragment extends Fragment {
             }
 
             if (editingTodo != null) {
-                // 수정 모드
+                // 수정 모드 - 기존 알림 취소
+                if (editingTodo.getWorkRequestId() != null) {
+                    cancelNotification(editingTodo.getWorkRequestId());
+                }
+                
                 editingTodo.setTitle(title);
                 editingTodo.setDetail(detail);
                 editingTodo.setDate(selectedDate[0].getTimeInMillis());
                 editingTodo.setTime(selectedTime[0].getTimeInMillis());
+                editingTodo.setNotificationType(selectedNotificationType[0]);
+                
+                // 알림 예약
+                String workRequestId = scheduleNotification(editingTodo);
+                editingTodo.setWorkRequestId(workRequestId);
+                
                 int result = dbHelper.updateToDo(editingTodo);
                 if (result > 0) {
                     loadToDos();
@@ -356,8 +427,15 @@ public class ToDoFragment extends Fragment {
                 ToDoItem newTodo = new ToDoItem(title, detail,
                         selectedDate[0].getTimeInMillis(),
                         selectedTime[0].getTimeInMillis());
+                newTodo.setNotificationType(selectedNotificationType[0]);
+                
+                // 알림 예약
+                String workRequestId = scheduleNotification(newTodo);
+                newTodo.setWorkRequestId(workRequestId);
+                
                 long id = dbHelper.insertToDo(newTodo);
                 if (id > 0) {
+                    newTodo.setId(id);
                     loadToDos();
                     updateWidget();
                     //Toast.makeText(requireContext(), "할 일이 추가되었습니다.", Toast.LENGTH_SHORT).show();
@@ -474,6 +552,11 @@ public class ToDoFragment extends Fragment {
                 .setMessage("작업을 완료하시겠습니까?")
                 .setPositiveButton("확인", (dialog, which) -> {
                     // 확인 시 완료 처리
+                    // 기존 알림 취소
+                    if (todo.getWorkRequestId() != null) {
+                        cancelNotification(todo.getWorkRequestId());
+                        todo.setWorkRequestId(null);
+                    }
                     todo.setCompleted(true);
                     int result = dbHelper.updateToDo(todo);
                     if (result > 0) {
@@ -513,6 +596,166 @@ public class ToDoFragment extends Fragment {
             } catch (Exception e) {
                 android.util.Log.e("ToDoFragment", "Error updating widget", e);
             }
+        }
+    }
+
+    /**
+     * 알림 예약
+     */
+    private String scheduleNotification(ToDoItem todo) {
+        if (todo.getNotificationType() == null) {
+            return null;
+        }
+
+        // ToDo의 날짜와 시간 계산
+        Calendar todoDateTime = Calendar.getInstance();
+        todoDateTime.setTimeInMillis(todo.getDate());
+        Calendar todoTime = Calendar.getInstance();
+        todoTime.setTimeInMillis(todo.getTime());
+        todoDateTime.set(Calendar.HOUR_OF_DAY, todoTime.get(Calendar.HOUR_OF_DAY));
+        todoDateTime.set(Calendar.MINUTE, todoTime.get(Calendar.MINUTE));
+        todoDateTime.set(Calendar.SECOND, 0);
+        todoDateTime.set(Calendar.MILLISECOND, 0);
+
+        // 알림 시간 계산
+        long delayMillis = calculateNotificationDelay(todoDateTime, todo.getNotificationType());
+        
+        if (delayMillis <= 0) {
+            // 이미 지난 시간이면 알림 예약하지 않음
+            return null;
+        }
+
+        // 알림 시간 계산 (겹치는 알림 처리용)
+        Calendar notificationTime = Calendar.getInstance();
+        notificationTime.add(Calendar.MILLISECOND, (int) delayMillis);
+        
+        // 알림 시간을 기반으로 태그 생성 (년월일시분까지 - 겹치는 알림 방지)
+        String notificationTag = String.format(Locale.getDefault(), 
+                "todo_notification_%04d%02d%02d_%02d%02d",
+                notificationTime.get(Calendar.YEAR),
+                notificationTime.get(Calendar.MONTH) + 1,
+                notificationTime.get(Calendar.DAY_OF_MONTH),
+                notificationTime.get(Calendar.HOUR_OF_DAY),
+                notificationTime.get(Calendar.MINUTE));
+
+        // WorkManager로 알림 예약
+        Data inputData = new Data.Builder()
+                .putLong("todo_id", todo.getId())
+                .build();
+
+        OneTimeWorkRequest workRequest = new OneTimeWorkRequest.Builder(ToDoNotificationWorker.class)
+                .setInitialDelay(delayMillis, TimeUnit.MILLISECONDS)
+                .setInputData(inputData)
+                .addTag(notificationTag) // 같은 시간의 알림은 같은 태그 사용
+                .build();
+
+        // 같은 태그의 작업이 이미 있으면 새 작업을 무시 (KEEP 정책)
+        WorkManager.getInstance(requireContext())
+                .enqueueUniqueWork(notificationTag, 
+                        ExistingWorkPolicy.KEEP, 
+                        workRequest);
+        
+        return workRequest.getId().toString();
+    }
+
+    /**
+     * 알림 취소
+     */
+    private void cancelNotification(String workRequestId) {
+        if (workRequestId == null) {
+            return;
+        }
+        try {
+            UUID uuid = UUID.fromString(workRequestId);
+            WorkManager.getInstance(requireContext()).cancelWorkById(uuid);
+        } catch (IllegalArgumentException e) {
+            android.util.Log.e("ToDoFragment", "Invalid work request ID: " + workRequestId, e);
+        }
+    }
+
+    /**
+     * 알림 지연 시간 계산 (밀리초)
+     */
+    private long calculateNotificationDelay(Calendar todoDateTime, String notificationType) {
+        Calendar now = Calendar.getInstance();
+        Calendar notificationTime = (Calendar) todoDateTime.clone();
+
+        // 알림 타입에 따라 시간 조정
+        if (notificationType.startsWith("morning_")) {
+            // 아침 시간 (8시 50분) 기준
+            notificationTime.set(Calendar.HOUR_OF_DAY, 8);
+            notificationTime.set(Calendar.MINUTE, 50);
+            notificationTime.set(Calendar.SECOND, 0);
+            notificationTime.set(Calendar.MILLISECOND, 0);
+            
+            // 알림 시간만큼 빼기
+            if (notificationType.equals("morning_10min")) {
+                notificationTime.add(Calendar.MINUTE, -10);
+            } else if (notificationType.equals("morning_30min")) {
+                notificationTime.add(Calendar.MINUTE, -30);
+            } else if (notificationType.equals("morning_1hour")) {
+                notificationTime.add(Calendar.HOUR_OF_DAY, -1);
+            } else if (notificationType.equals("morning_2hour")) {
+                notificationTime.add(Calendar.HOUR_OF_DAY, -2);
+            } else if (notificationType.equals("morning_3hour")) {
+                notificationTime.add(Calendar.HOUR_OF_DAY, -3);
+            }
+        } else {
+            // ToDo 시간 기준으로 빼기
+            if (notificationType.equals("10min")) {
+                notificationTime.add(Calendar.MINUTE, -10);
+            } else if (notificationType.equals("30min")) {
+                notificationTime.add(Calendar.MINUTE, -30);
+            } else if (notificationType.equals("1hour")) {
+                notificationTime.add(Calendar.HOUR_OF_DAY, -1);
+            } else if (notificationType.equals("2hour")) {
+                notificationTime.add(Calendar.HOUR_OF_DAY, -2);
+            } else if (notificationType.equals("3hour")) {
+                notificationTime.add(Calendar.HOUR_OF_DAY, -3);
+            }
+        }
+
+        return notificationTime.getTimeInMillis() - now.getTimeInMillis();
+    }
+
+    /**
+     * 알림 타입을 표시 텍스트로 변환
+     */
+    private String getNotificationDisplayText(String notificationType) {
+        if (notificationType == null) {
+            return null;
+        }
+        switch (notificationType) {
+            case "morning_10min": return "아침 + 10분전";
+            case "morning_30min": return "아침 + 30분전";
+            case "morning_1hour": return "아침 + 1시간전";
+            case "morning_2hour": return "아침 + 2시간전";
+            case "morning_3hour": return "아침 + 3시간전";
+            case "10min": return "10분전";
+            case "30min": return "30분전";
+            case "1hour": return "1시간전";
+            case "2hour": return "2시간전";
+            case "3hour": return "3시간전";
+            default: return null;
+        }
+    }
+
+    /**
+     * 표시 텍스트를 알림 타입으로 변환
+     */
+    private String getNotificationTypeFromDisplay(String displayText) {
+        switch (displayText) {
+            case "아침 + 10분전": return "morning_10min";
+            case "아침 + 30분전": return "morning_30min";
+            case "아침 + 1시간전": return "morning_1hour";
+            case "아침 + 2시간전": return "morning_2hour";
+            case "아침 + 3시간전": return "morning_3hour";
+            case "10분전": return "10min";
+            case "30분전": return "30min";
+            case "1시간전": return "1hour";
+            case "2시간전": return "2hour";
+            case "3시간전": return "3hour";
+            default: return "morning_10min";
         }
     }
 

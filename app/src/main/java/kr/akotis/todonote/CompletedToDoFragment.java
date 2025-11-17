@@ -15,6 +15,9 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import java.util.List;
+import java.util.UUID;
+
+import androidx.work.WorkManager;
 
 import kr.akotis.todonote.database.DatabaseHelper;
 import kr.akotis.todonote.model.ToDoItem;
@@ -139,7 +142,7 @@ public class CompletedToDoFragment extends Fragment {
                     if (result > 0) {
                         // 목록에서 제거
                         loadCompletedToDos();
-                        Toast.makeText(requireContext(), "작업이 복원되었습니다.", Toast.LENGTH_SHORT).show();
+                        //Toast.makeText(requireContext(), "작업이 복원되었습니다.", Toast.LENGTH_SHORT).show();
                     } else {
                         loadCompletedToDos();
                         Toast.makeText(requireContext(), "복원에 실패했습니다.", Toast.LENGTH_SHORT).show();
@@ -164,11 +167,15 @@ public class CompletedToDoFragment extends Fragment {
                 .setMessage("이 작업을 영구적으로 삭제하시겠습니까?")
                 .setPositiveButton("삭제", (dialog, which) -> {
                     // 확인 시 영구 삭제
+                    // 기존 알림 취소
+                    if (todo.getWorkRequestId() != null) {
+                        cancelNotification(todo.getWorkRequestId());
+                    }
                     int result = dbHelper.deleteToDo(todo.getId());
                     if (result > 0) {
                         // 목록에서 제거
                         loadCompletedToDos();
-                        Toast.makeText(requireContext(), "작업이 삭제되었습니다.", Toast.LENGTH_SHORT).show();
+                        //Toast.makeText(requireContext(), "작업이 삭제되었습니다.", Toast.LENGTH_SHORT).show();
                     } else {
                         loadCompletedToDos();
                         Toast.makeText(requireContext(), "삭제에 실패했습니다.", Toast.LENGTH_SHORT).show();
@@ -181,6 +188,21 @@ public class CompletedToDoFragment extends Fragment {
                     // 다이얼로그가 취소되면 아무 작업도 하지 않음
                 })
                 .show();
+    }
+
+    /**
+     * 알림 취소
+     */
+    private void cancelNotification(String workRequestId) {
+        if (workRequestId == null) {
+            return;
+        }
+        try {
+            UUID uuid = UUID.fromString(workRequestId);
+            WorkManager.getInstance(requireContext()).cancelWorkById(uuid);
+        } catch (IllegalArgumentException e) {
+            android.util.Log.e("CompletedToDoFragment", "Invalid work request ID: " + workRequestId, e);
+        }
     }
 
     private void loadCompletedToDos() {

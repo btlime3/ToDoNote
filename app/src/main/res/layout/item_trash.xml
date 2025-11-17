@@ -53,6 +53,22 @@
             android:ellipsize="end"
             android:visibility="gone" />
 
+        <!-- 잠금 아이콘 (잠금된 노트인 경우) -->
+        <FrameLayout
+            android:id="@+id/layout_locked"
+            android:layout_width="match_parent"
+            android:layout_height="120dp"
+            android:visibility="gone"
+            android:gravity="center">
+            
+            <ImageView
+                android:id="@+id/iv_lock"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:src="@android:drawable/ic_lock_lock"
+                android:layout_gravity="center" />
+        </FrameLayout>
+
         <!-- 삭제된 날짜 -->
         <TextView
             android:id="@+id/tv_deleted_date"

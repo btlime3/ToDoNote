@@ -22,7 +22,7 @@ import kr.akotis.todonote.model.ToDoItem;
 public class DatabaseHelper extends SQLiteOpenHelper {
 
     private static final String DATABASE_NAME = "ToDoNote.db";
-    private static final int DATABASE_VERSION = 7;
+    private static final int DATABASE_VERSION = 8;
     
     // 암호 설정 테이블
     private static final String TABLE_PASSWORD = "password_settings";
@@ -40,6 +40,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     private static final String COL_TODO_TIME = "time";
     private static final String COL_TODO_COMPLETED = "completed";
     private static final String COL_TODO_CHECKED = "checked";
+    private static final String COL_TODO_NOTIFICATION_TYPE = "notification_type";
+    private static final String COL_TODO_WORK_REQUEST_ID = "work_request_id";
     private static final String COL_TODO_CREATED_AT = "created_at";
     private static final String COL_TODO_UPDATED_AT = "updated_at";
 
@@ -92,6 +94,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 COL_TODO_TIME + " INTEGER, " +
                 COL_TODO_COMPLETED + " INTEGER DEFAULT 0, " +
                 COL_TODO_CHECKED + " INTEGER DEFAULT 0, " +
+                COL_TODO_NOTIFICATION_TYPE + " TEXT, " +
+                COL_TODO_WORK_REQUEST_ID + " TEXT, " +
                 COL_TODO_CREATED_AT + " INTEGER, " +
                 COL_TODO_UPDATED_AT + " INTEGER)";
         db.execSQL(createTodoTable);
@@ -194,6 +198,11 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 e.printStackTrace();
             }
         }
+        if (oldVersion < 8) {
+            // 알림 관련 컬럼 추가
+            db.execSQL("ALTER TABLE " + TABLE_TODO + " ADD COLUMN " + COL_TODO_NOTIFICATION_TYPE + " TEXT");
+            db.execSQL("ALTER TABLE " + TABLE_TODO + " ADD COLUMN " + COL_TODO_WORK_REQUEST_ID + " TEXT");
+        }
     }
 
     // ========== ToDo CRUD ==========
@@ -207,6 +216,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         values.put(COL_TODO_TIME, todo.getTime());
         values.put(COL_TODO_COMPLETED, todo.isCompleted() ? 1 : 0);
         values.put(COL_TODO_CHECKED, todo.isChecked() ? 1 : 0);
+        values.put(COL_TODO_NOTIFICATION_TYPE, todo.getNotificationType());
+        values.put(COL_TODO_WORK_REQUEST_ID, todo.getWorkRequestId());
         values.put(COL_TODO_CREATED_AT, System.currentTimeMillis());
         values.put(COL_TODO_UPDATED_AT, System.currentTimeMillis());
 
@@ -236,6 +247,12 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         
         int checkedIndex = cursor.getColumnIndex(COL_TODO_CHECKED);
         todo.setChecked(checkedIndex >= 0 && cursor.getInt(checkedIndex) == 1);
+        
+        int notificationTypeIndex = cursor.getColumnIndex(COL_TODO_NOTIFICATION_TYPE);
+        todo.setNotificationType(notificationTypeIndex >= 0 ? cursor.getString(notificationTypeIndex) : null);
+        
+        int workRequestIdIndex = cursor.getColumnIndex(COL_TODO_WORK_REQUEST_ID);
+        todo.setWorkRequestId(workRequestIdIndex >= 0 ? cursor.getString(workRequestIdIndex) : null);
         
         todo.setCreatedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_TODO_CREATED_AT)));
         todo.setUpdatedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_TODO_UPDATED_AT)));
@@ -316,6 +333,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         values.put(COL_TODO_TIME, todo.getTime());
         values.put(COL_TODO_COMPLETED, todo.isCompleted() ? 1 : 0);
         values.put(COL_TODO_CHECKED, todo.isChecked() ? 1 : 0);
+        values.put(COL_TODO_NOTIFICATION_TYPE, todo.getNotificationType());
+        values.put(COL_TODO_WORK_REQUEST_ID, todo.getWorkRequestId());
         values.put(COL_TODO_UPDATED_AT, System.currentTimeMillis());
 
         int result = db.update(TABLE_TODO, values, COL_TODO_ID + " = ?", new String[]{String.valueOf(todo.getId())});
@@ -492,17 +511,18 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     // ========== Note CRUD ==========
 
     public long insertNote(NoteItem note) {
+        // DB를 열기 전에 hasNotePassword()를 먼저 호출
+        boolean needEncryption = note.isLocked() && hasNotePassword();
+        String content = note.getContent();
+        if (needEncryption) {
+            content = encryptContent(content);
+        }
+        
+        // 이제 DB를 열어서 삽입
         SQLiteDatabase db = this.getWritableDatabase();
         ContentValues values = new ContentValues();
         values.put(COL_NOTE_TITLE, note.getTitle());
-        
-        // 잠금된 노트는 내용을 암호화하여 저장
-        String content = note.getContent();
-        if (note.isLocked() && hasNotePassword()) {
-            content = encryptContent(content);
-        }
         values.put(COL_NOTE_CONTENT, content);
-        
         values.put(COL_NOTE_CREATED_AT, System.currentTimeMillis());
         values.put(COL_NOTE_UPDATED_AT, System.currentTimeMillis());
         values.put(COL_NOTE_LOCKED, note.isLocked() ? 1 : 0);
@@ -543,17 +563,18 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     }
 
     public int updateNote(NoteItem note) {
+        // DB를 열기 전에 hasNotePassword()를 먼저 호출
+        boolean needEncryption = note.isLocked() && hasNotePassword();
+        String content = note.getContent();
+        if (needEncryption) {
+            content = encryptContent(content);
+        }
+        
+        // 이제 DB를 열어서 업데이트
         SQLiteDatabase db = this.getWritableDatabase();
         ContentValues values = new ContentValues();
         values.put(COL_NOTE_TITLE, note.getTitle());
-        
-        // 잠금된 노트는 내용을 암호화하여 저장
-        String content = note.getContent();
-        if (note.isLocked() && hasNotePassword()) {
-            content = encryptContent(content);
-        }
         values.put(COL_NOTE_CONTENT, content);
-        
         values.put(COL_NOTE_UPDATED_AT, System.currentTimeMillis());
         values.put(COL_NOTE_LOCKED, note.isLocked() ? 1 : 0);
 
@@ -587,10 +608,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 int lockedIndex = cursor.getColumnIndex(COL_NOTE_LOCKED);
                 boolean isLocked = lockedIndex >= 0 && cursor.getInt(lockedIndex) == 1;
                 
-                // 잠금된 노트는 내용을 복호화 (암호가 설정되어 있고 잠금 상태인 경우)
-                if (isLocked && hasNotePassword()) {
-                    content = decryptContent(content);
-                }
+                // 휴지통에서는 잠금된 노트의 내용을 복호화하지 않음 (보안 유지)
+                // 암호화된 상태로 유지하여 휴지통에서 내용이 보이지 않도록 함
                 note.setContent(content);
                 
                 note.setCreatedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_NOTE_CREATED_AT)));
@@ -807,18 +826,11 @@ public class DatabaseHelper extends SQLiteOpenHelper {
      * 노트를 잠금/잠금해제합니다.
      */
     public int toggleNoteLock(long noteId, boolean lock) {
-        SQLiteDatabase db = this.getWritableDatabase();
-        
-        // 현재 노트 정보 가져오기 (복호화된 상태)
+        // getNoteById()를 먼저 호출 (내부에서 DB를 열고 닫음)
         NoteItem note = getNoteById(noteId);
         if (note == null) {
-            db.close();
             return 0;
         }
-        
-        ContentValues values = new ContentValues();
-        values.put(COL_NOTE_LOCKED, lock ? 1 : 0);
-        values.put(COL_NOTE_UPDATED_AT, System.currentTimeMillis());
         
         // 잠금 상태 변경 시 내용 암호화/복호화 처리
         String content = note.getContent();
@@ -827,6 +839,12 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             content = encryptContent(content);
         }
         // 잠금 해제: 이미 getNoteById에서 복호화되어 있으므로 그대로 저장
+        
+        // 이제 DB를 열어서 업데이트
+        SQLiteDatabase db = this.getWritableDatabase();
+        ContentValues values = new ContentValues();
+        values.put(COL_NOTE_LOCKED, lock ? 1 : 0);
+        values.put(COL_NOTE_UPDATED_AT, System.currentTimeMillis());
         values.put(COL_NOTE_CONTENT, content);
         
         int result = db.update(TABLE_NOTE, values, COL_NOTE_ID + " = ?", new String[]{String.valueOf(noteId)});

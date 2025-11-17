@@ -15,8 +15,8 @@
 
         <FrameLayout
             android:layout_width="match_parent"
-            android:layout_height="120dp"
-            android:padding="12dp">
+            android:layout_height="140dp"
+            android:padding="8dp">
 
             <!-- 노트 내용 (하얀색 배경) -->
             <TextView
@@ -26,16 +26,16 @@
                 android:background="@color/color_surface"
                 android:ellipsize="end"
                 android:gravity="top|start"
-                android:maxLines="6"
+                android:maxLines="7"
                 android:padding="8dp"
                 android:textColor="@color/color_text_dark"
                 android:textSize="12sp" />
 
-            <!-- 잠금 아이콘 (가운데 정렬) -->
+            <!-- 잠금 아이콘 (가운데 정렬, 작게) -->
             <ImageView
                 android:id="@+id/iv_lock"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
                 android:layout_gravity="center"
                 android:src="@android:drawable/ic_lock_lock"
                 android:visibility="gone"
@@ -50,12 +50,12 @@
         android:id="@+id/tv_note_title"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
+        android:layout_marginTop="4dp"
         android:ellipsize="end"
         android:gravity="center"
         android:maxLines="1"
         android:textColor="@color/color_text_dark"
-        android:textSize="14sp"
+        android:textSize="12sp"
         android:textStyle="bold" />
 
 </LinearLayout>

@@ -91,6 +91,28 @@
 
     </LinearLayout>
 
+    <com.google.android.material.textfield.TextInputLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="알림 시간"
+        android:layout_marginBottom="24dp"
+        app:startIconDrawable="@android:drawable/ic_menu_recent_history"
+        app:boxBackgroundColor="@color/white"
+        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+
+        <AutoCompleteTextView
+            android:id="@+id/spinner_notification"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="none"
+            android:focusable="true"
+            android:clickable="true"
+            android:background="@color/white"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp" />
+
+    </com.google.android.material.textfield.TextInputLayout>
+
     <View
         android:layout_width="match_parent"
         android:layout_height="1dp"

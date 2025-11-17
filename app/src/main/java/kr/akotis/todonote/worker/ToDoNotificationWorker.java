@@ -1,0 +1,102 @@
+package kr.akotis.todonote.worker;
+
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.content.Context;
+import android.content.Intent;
+import android.os.Build;
+
+import androidx.core.app.NotificationCompat;
+import androidx.work.Worker;
+import androidx.work.WorkerParameters;
+
+import kr.akotis.todonote.MainActivity;
+import kr.akotis.todonote.R;
+import kr.akotis.todonote.database.DatabaseHelper;
+import kr.akotis.todonote.model.ToDoItem;
+
+public class ToDoNotificationWorker extends Worker {
+    private static final String CHANNEL_ID = "todo_notification_channel";
+    private static final int NOTIFICATION_ID = 1000;
+
+    public ToDoNotificationWorker(Context context, WorkerParameters params) {
+        super(context, params);
+    }
+
+    @Override
+    public Result doWork() {
+        // WorkRequest에서 전달된 todoId 가져오기
+        long todoId = getInputData().getLong("todo_id", -1);
+        
+        if (todoId == -1) {
+            return Result.failure();
+        }
+
+        DatabaseHelper dbHelper = new DatabaseHelper(getApplicationContext());
+        ToDoItem todo = dbHelper.getToDoById(todoId);
+        dbHelper.close();
+
+        // ToDo가 삭제되었거나 완료된 경우 알림 표시하지 않음
+        if (todo == null) {
+            // ToDo가 삭제된 경우
+            return Result.success();
+        }
+        
+        if (todo.isCompleted()) {
+            // ToDo가 완료된 경우
+            return Result.success();
+        }
+
+        // 알림 채널 생성 (Android 8.0 이상)
+        createNotificationChannel();
+
+        // 알림 클릭 시 앱 열기
+        Intent intent = new Intent(getApplicationContext(), MainActivity.class);
+        intent.putExtra("fragment", "todo");
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        PendingIntent pendingIntent = PendingIntent.getActivity(
+                getApplicationContext(),
+                (int) todoId,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+
+        // 알림 생성
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(
+                getApplicationContext(), CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentTitle(todo.getTitle())
+                .setContentText(todo.getDetail() != null && !todo.getDetail().isEmpty() 
+                        ? todo.getDetail() 
+                        : "할 일이 예정되어 있습니다")
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setContentIntent(pendingIntent)
+                .setAutoCancel(true);
+
+        // 알림 표시
+        NotificationManager notificationManager = (NotificationManager)
+                getApplicationContext().getSystemService(Context.NOTIFICATION_SERVICE);
+        if (notificationManager != null) {
+            notificationManager.notify((int) todoId, builder.build());
+        }
+
+        return Result.success();
+    }
+
+    private void createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            CharSequence name = "ToDo 알림";
+            String description = "할 일 알림 채널";
+            int importance = NotificationManager.IMPORTANCE_DEFAULT;
+            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, name, importance);
+            channel.setDescription(description);
+
+            NotificationManager notificationManager = getApplicationContext()
+                    .getSystemService(NotificationManager.class);
+            if (notificationManager != null) {
+                notificationManager.createNotificationChannel(channel);
+            }
+        }
+    }
+}
+
