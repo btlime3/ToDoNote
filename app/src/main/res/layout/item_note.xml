@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:layout_margin="4dp">
+
+    <!-- 내용 영역 (CardView로 감싸진 하얀색 박스) -->
+    <androidx.cardview.widget.CardView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        app:cardCornerRadius="8dp"
+        app:cardElevation="2dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="12dp">
+
+            <!-- 노트 내용 (하얀색 배경) -->
+            <TextView
+                android:id="@+id/tv_note_content"
+                android:layout_width="match_parent"
+                android:layout_height="120dp"
+                android:background="@color/color_surface"
+                android:ellipsize="end"
+                android:gravity="top|start"
+                android:maxLines="6"
+                android:padding="8dp"
+                android:textColor="@color/color_text_dark"
+                android:textSize="12sp" />
+
+        </LinearLayout>
+
+    </androidx.cardview.widget.CardView>
+
+    <!-- 노트 제목 (CardView 밖, 별도로 분리, 배경 없음) -->
+    <TextView
+        android:id="@+id/tv_note_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:ellipsize="end"
+        android:gravity="center"
+        android:maxLines="1"
+        android:textColor="@color/color_text_dark"
+        android:textSize="14sp"
+        android:textStyle="bold" />
+
+</LinearLayout>

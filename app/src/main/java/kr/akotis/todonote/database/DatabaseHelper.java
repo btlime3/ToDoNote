@@ -421,5 +421,25 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         db.close();
         return result;
     }
+
+    public NoteItem getNoteById(long id) {
+        SQLiteDatabase db = this.getReadableDatabase();
+        Cursor cursor = db.query(TABLE_NOTE, null, COL_NOTE_ID + " = ?",
+                new String[]{String.valueOf(id)}, null, null, null);
+
+        NoteItem note = null;
+        if (cursor.moveToFirst()) {
+            note = new NoteItem();
+            note.setId(cursor.getLong(cursor.getColumnIndexOrThrow(COL_NOTE_ID)));
+            note.setTitle(cursor.getString(cursor.getColumnIndexOrThrow(COL_NOTE_TITLE)));
+            note.setContent(cursor.getString(cursor.getColumnIndexOrThrow(COL_NOTE_CONTENT)));
+            note.setCreatedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_NOTE_CREATED_AT)));
+            note.setUpdatedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_NOTE_UPDATED_AT)));
+        }
+
+        cursor.close();
+        db.close();
+        return note;
+    }
 }
 
