@@ -12,8 +12,10 @@ import androidx.fragment.app.Fragment;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.android.material.textfield.TextInputEditText;
+import com.google.android.material.textfield.TextInputLayout;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -49,11 +51,17 @@ public class NoteFragment extends Fragment {
 
         // 노트 클릭 리스너
         noteAdapter.setOnNoteClickListener(note -> {
-            NoteEditFragment editFragment = NoteEditFragment.newInstance(note.getId());
-            requireActivity().getSupportFragmentManager().beginTransaction()
-                    .replace(R.id.fragment_container, editFragment)
-                    .addToBackStack(null)
-                    .commit();
+            if (note.isLocked()) {
+                // 잠금된 노트: 암호 입력 다이얼로그 표시
+                showPasswordDialog(note);
+            } else {
+                // 잠금 해제된 노트: 바로 편집 화면으로 이동
+                NoteEditFragment editFragment = NoteEditFragment.newInstance(note.getId());
+                requireActivity().getSupportFragmentManager().beginTransaction()
+                        .replace(R.id.fragment_container, editFragment)
+                        .addToBackStack(null)
+                        .commit();
+            }
         });
 
         // 검색 기능
@@ -117,6 +125,47 @@ public class NoteFragment extends Fragment {
     public void onResume() {
         super.onResume();
         loadNotes();
+    }
+
+    private void showPasswordDialog(NoteItem note) {
+        // 암호가 설정되어 있는지 확인
+        if (!dbHelper.hasNotePassword()) {
+            // 암호가 설정되지 않은 경우: 암호 설정 안내
+            new MaterialAlertDialogBuilder(requireContext())
+                    .setTitle("암호 미설정")
+                    .setMessage("노트 암호가 설정되지 않았습니다. 왼쪽 메뉴에서 '노트 암호 설정'을 통해 암호를 설정해주세요.")
+                    .setPositiveButton("확인", null)
+                    .show();
+            return;
+        }
+
+        View dialogView = getLayoutInflater().inflate(R.layout.dialog_password, null);
+        TextInputLayout passwordLayout = dialogView.findViewById(R.id.password_layout);
+        TextInputEditText etPassword = dialogView.findViewById(R.id.et_password);
+
+        new MaterialAlertDialogBuilder(requireContext())
+                .setTitle("잠금 해제")
+                .setView(dialogView)
+                .setPositiveButton("확인", (dialog, which) -> {
+                    String password = etPassword.getText() != null ? etPassword.getText().toString() : "";
+                    if (password.isEmpty()) {
+                        android.widget.Toast.makeText(requireContext(), "암호를 입력해주세요.", android.widget.Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    
+                    if (dbHelper.verifyNotePassword(password)) {
+                        // 암호가 맞으면 편집 화면으로 이동
+                        NoteEditFragment editFragment = NoteEditFragment.newInstance(note.getId());
+                        requireActivity().getSupportFragmentManager().beginTransaction()
+                                .replace(R.id.fragment_container, editFragment)
+                                .addToBackStack(null)
+                                .commit();
+                    } else {
+                        android.widget.Toast.makeText(requireContext(), "암호가 올바르지 않습니다.", android.widget.Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton("취소", null)
+                .show();
     }
 
     @Override

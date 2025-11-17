@@ -13,17 +13,16 @@
         app:cardCornerRadius="8dp"
         app:cardElevation="2dp">
 
-        <LinearLayout
+        <FrameLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
+            android:layout_height="120dp"
             android:padding="12dp">
 
             <!-- 노트 내용 (하얀색 배경) -->
             <TextView
                 android:id="@+id/tv_note_content"
                 android:layout_width="match_parent"
-                android:layout_height="120dp"
+                android:layout_height="match_parent"
                 android:background="@color/color_surface"
                 android:ellipsize="end"
                 android:gravity="top|start"
@@ -32,7 +31,17 @@
                 android:textColor="@color/color_text_dark"
                 android:textSize="12sp" />
 
-        </LinearLayout>
+            <!-- 잠금 아이콘 (가운데 정렬) -->
+            <ImageView
+                android:id="@+id/iv_lock"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_gravity="center"
+                android:src="@android:drawable/ic_lock_lock"
+                android:visibility="gone"
+                android:contentDescription="잠금" />
+
+        </FrameLayout>
 
     </androidx.cardview.widget.CardView>
 

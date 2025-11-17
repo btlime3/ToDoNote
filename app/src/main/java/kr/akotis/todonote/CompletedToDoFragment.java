@@ -39,19 +39,8 @@ public class CompletedToDoFragment extends Fragment {
         recyclerTodo.setLayoutManager(new LinearLayoutManager(requireContext()));
         recyclerTodo.setAdapter(todoAdapter);
 
-        // 체크박스 리스너 설정 (완료 해제)
-        todoAdapter.setOnToDoCheckedChangeListener((todo, isChecked) -> {
-            if (!isChecked) {
-                // 완료 해제
-                recyclerTodo.post(() -> {
-                    todo.setCompleted(false);
-                    int result = dbHelper.updateToDo(todo);
-                    if (result > 0) {
-                        loadCompletedToDos();
-                    }
-                });
-            }
-        });
+        // 체크박스 리스너 제거 (완료된 작업에서는 체크박스로 작업하지 않음)
+        todoAdapter.setOnToDoCheckedChangeListener(null);
 
         // 스와이프 제스처 설정
         setupSwipeGesture();
@@ -64,7 +53,7 @@ public class CompletedToDoFragment extends Fragment {
 
     private void setupSwipeGesture() {
         ItemTouchHelper.SimpleCallback itemTouchHelperCallback = new ItemTouchHelper.SimpleCallback(
-                0, ItemTouchHelper.LEFT) {
+                0, ItemTouchHelper.LEFT | ItemTouchHelper.RIGHT) {
             @Override
             public boolean onMove(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder viewHolder, @NonNull RecyclerView.ViewHolder target) {
                 return false;
@@ -78,6 +67,9 @@ public class CompletedToDoFragment extends Fragment {
                 if (direction == ItemTouchHelper.LEFT) {
                     // 왼쪽 스와이프: 삭제 확인 다이얼로그 표시
                     showDeleteConfirmDialog(todo, position);
+                } else if (direction == ItemTouchHelper.RIGHT) {
+                    // 오른쪽 스와이프: 복원 확인 다이얼로그 표시
+                    showRestoreConfirmDialog(todo, position);
                 } else {
                     // 스와이프 취소 시 목록 새로고침
                     loadCompletedToDos();
@@ -90,7 +82,23 @@ public class CompletedToDoFragment extends Fragment {
                     View itemView = viewHolder.itemView;
                     android.graphics.Paint paint = new android.graphics.Paint();
                     
-                    if (dX < 0) {
+                    if (dX > 0) {
+                        // 오른쪽 스와이프 (복원) - 초록색 배경
+                        paint.setColor(0xFF4CAF50); // 초록색
+                        c.drawRect((float) itemView.getLeft(), (float) itemView.getTop(), dX, (float) itemView.getBottom(), paint);
+                        
+                        // 복원 아이콘
+                        android.graphics.drawable.Drawable restoreIcon = requireContext().getDrawable(android.R.drawable.ic_menu_revert);
+                        if (restoreIcon != null) {
+                            int iconMargin = (itemView.getHeight() - restoreIcon.getIntrinsicHeight()) / 2;
+                            int iconTop = itemView.getTop() + iconMargin;
+                            int iconBottom = iconTop + restoreIcon.getIntrinsicHeight();
+                            int iconLeft = itemView.getLeft() + iconMargin;
+                            int iconRight = iconLeft + restoreIcon.getIntrinsicWidth();
+                            restoreIcon.setBounds(iconLeft, iconTop, iconRight, iconBottom);
+                            restoreIcon.draw(c);
+                        }
+                    } else {
                         // 왼쪽 스와이프 (삭제) - 빨간색 배경
                         paint.setColor(0xFFFF6B6B); // 빨간색
                         c.drawRect((float) itemView.getRight() + dX, (float) itemView.getTop(), (float) itemView.getRight(), (float) itemView.getBottom(), paint);
@@ -114,6 +122,36 @@ public class CompletedToDoFragment extends Fragment {
 
         ItemTouchHelper itemTouchHelper = new ItemTouchHelper(itemTouchHelperCallback);
         itemTouchHelper.attachToRecyclerView(recyclerTodo);
+    }
+
+    private void showRestoreConfirmDialog(ToDoItem todo, int position) {
+        // 스와이프 취소를 위해 목록 새로고침
+        loadCompletedToDos();
+        
+        // 복원 확인 다이얼로그 표시
+        new MaterialAlertDialogBuilder(requireContext())
+                .setTitle("작업 복원")
+                .setMessage("이 작업을 ToDo 목록으로 복원하시겠습니까?")
+                .setPositiveButton("복원", (dialog, which) -> {
+                    // 확인 시 복원 (completed를 false로 설정)
+                    todo.setCompleted(false);
+                    int result = dbHelper.updateToDo(todo);
+                    if (result > 0) {
+                        // 목록에서 제거
+                        loadCompletedToDos();
+                        Toast.makeText(requireContext(), "작업이 복원되었습니다.", Toast.LENGTH_SHORT).show();
+                    } else {
+                        loadCompletedToDos();
+                        Toast.makeText(requireContext(), "복원에 실패했습니다.", Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton("취소", (dialog, which) -> {
+                    // 취소 시 아무 작업도 하지 않음 (이미 loadCompletedToDos()로 복원됨)
+                })
+                .setOnCancelListener(dialog -> {
+                    // 다이얼로그가 취소되면 아무 작업도 하지 않음
+                })
+                .show();
     }
 
     private void showDeleteConfirmDialog(ToDoItem todo, int position) {

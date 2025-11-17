@@ -6,6 +6,7 @@ public class MemoItem {
     private long createdAt;
     private long updatedAt;
     private int order;
+    private long deletedAt;
 
     public MemoItem() {
     }
@@ -54,6 +55,14 @@ public class MemoItem {
 
     public void setOrder(int order) {
         this.order = order;
+    }
+
+    public long getDeletedAt() {
+        return deletedAt;
+    }
+
+    public void setDeletedAt(long deletedAt) {
+        this.deletedAt = deletedAt;
     }
 }
 

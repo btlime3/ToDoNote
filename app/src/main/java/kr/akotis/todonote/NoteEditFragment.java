@@ -23,6 +23,7 @@ public class NoteEditFragment extends Fragment {
     private MaterialButton btnSave;
     private MaterialButton btnCancel;
     private MaterialButton btnDelete;
+    private MaterialButton btnLock;
     private DatabaseHelper dbHelper;
     private NoteItem editingNote;
     private long noteId = -1;
@@ -58,6 +59,7 @@ public class NoteEditFragment extends Fragment {
         btnSave = view.findViewById(R.id.btn_save);
         btnCancel = view.findViewById(R.id.btn_cancel);
         btnDelete = view.findViewById(R.id.btn_delete);
+        btnLock = view.findViewById(R.id.btn_lock);
 
         // note_id 확인
         if (noteId != -1) {
@@ -68,6 +70,16 @@ public class NoteEditFragment extends Fragment {
                 etContent.setText(editingNote.getContent());
                 // 삭제 버튼 표시
                 btnDelete.setVisibility(View.VISIBLE);
+                // 잠금 버튼 표시 및 상태 설정
+                if (btnLock != null) {
+                    btnLock.setVisibility(View.VISIBLE);
+                    updateLockButton();
+                }
+            }
+        } else {
+            // 새 노트 작성 모드: 잠금 버튼 숨기기
+            if (btnLock != null) {
+                btnLock.setVisibility(View.GONE);
             }
         }
 
@@ -84,7 +96,39 @@ public class NoteEditFragment extends Fragment {
         // 삭제 버튼 클릭
         btnDelete.setOnClickListener(v -> showDeleteConfirmDialog());
 
+        // 잠금 버튼 클릭
+        if (btnLock != null) {
+            btnLock.setOnClickListener(v -> toggleLock());
+        }
+
         return view;
+    }
+
+    private void updateLockButton() {
+        if (editingNote != null && btnLock != null) {
+            if (editingNote.isLocked()) {
+                btnLock.setText("잠금 해제");
+            } else {
+                btnLock.setText("잠금");
+            }
+        }
+    }
+
+    private void toggleLock() {
+        if (editingNote == null || noteId == -1) {
+            return;
+        }
+
+        boolean newLockState = !editingNote.isLocked();
+        int result = dbHelper.toggleNoteLock(noteId, newLockState);
+        if (result > 0) {
+            editingNote.setLocked(newLockState);
+            updateLockButton();
+            String message = newLockState ? "노트가 잠금되었습니다." : "노트 잠금이 해제되었습니다.";
+            Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show();
+        } else {
+            Toast.makeText(requireContext(), "잠금 상태 변경에 실패했습니다.", Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void saveNote() {

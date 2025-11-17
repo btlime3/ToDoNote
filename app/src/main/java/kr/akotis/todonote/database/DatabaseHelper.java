@@ -2,10 +2,14 @@ package kr.akotis.todonote.database;
 
 import android.content.ContentValues;
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
+import android.util.Base64;
 
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -16,7 +20,14 @@ import kr.akotis.todonote.model.ToDoItem;
 public class DatabaseHelper extends SQLiteOpenHelper {
 
     private static final String DATABASE_NAME = "ToDoNote.db";
-    private static final int DATABASE_VERSION = 4;
+    private static final int DATABASE_VERSION = 7;
+    
+    // 암호 설정 테이블
+    private static final String TABLE_PASSWORD = "password_settings";
+    private static final String COL_PASSWORD_ID = "id";
+    private static final String COL_PASSWORD_HASH = "password_hash";
+
+    private Context context;
 
     // ToDo 테이블
     private static final String TABLE_TODO = "todo";
@@ -37,6 +48,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     private static final String COL_MEMO_CREATED_AT = "created_at";
     private static final String COL_MEMO_UPDATED_AT = "updated_at";
     private static final String COL_MEMO_ORDER = "memo_order";
+    private static final String COL_MEMO_DELETED_AT = "deleted_at";
 
     // Note 테이블
     private static final String TABLE_NOTE = "note";
@@ -45,9 +57,26 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     private static final String COL_NOTE_CONTENT = "content";
     private static final String COL_NOTE_CREATED_AT = "created_at";
     private static final String COL_NOTE_UPDATED_AT = "updated_at";
+    private static final String COL_NOTE_DELETED_AT = "deleted_at";
+    private static final String COL_NOTE_LOCKED = "locked";
 
     public DatabaseHelper(Context context) {
         super(context, DATABASE_NAME, null, DATABASE_VERSION);
+        this.context = context;
+    }
+
+    /**
+     * 데이터베이스 파일의 절대 경로를 반환합니다.
+     */
+    public String getDatabasePath() {
+        return getReadableDatabase().getPath();
+    }
+
+    /**
+     * 데이터베이스 파일의 절대 경로를 반환합니다 (Context를 통해).
+     */
+    public static String getDatabasePath(Context context) {
+        return context.getDatabasePath(DATABASE_NAME).getAbsolutePath();
     }
 
     @Override
@@ -71,7 +100,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 COL_MEMO_CONTENT + " TEXT NOT NULL, " +
                 COL_MEMO_CREATED_AT + " INTEGER, " +
                 COL_MEMO_UPDATED_AT + " INTEGER, " +
-                COL_MEMO_ORDER + " INTEGER DEFAULT 0)";
+                COL_MEMO_ORDER + " INTEGER DEFAULT 0, " +
+                COL_MEMO_DELETED_AT + " INTEGER)";
         db.execSQL(createMemoTable);
 
         // Note 테이블 생성
@@ -80,8 +110,16 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 COL_NOTE_TITLE + " TEXT, " +
                 COL_NOTE_CONTENT + " TEXT NOT NULL, " +
                 COL_NOTE_CREATED_AT + " INTEGER, " +
-                COL_NOTE_UPDATED_AT + " INTEGER)";
+                COL_NOTE_UPDATED_AT + " INTEGER, " +
+                COL_NOTE_DELETED_AT + " INTEGER, " +
+                COL_NOTE_LOCKED + " INTEGER DEFAULT 0)";
         db.execSQL(createNoteTable);
+
+        // 암호 설정 테이블 생성
+        String createPasswordTable = "CREATE TABLE " + TABLE_PASSWORD + " (" +
+                COL_PASSWORD_ID + " INTEGER PRIMARY KEY AUTOINCREMENT, " +
+                COL_PASSWORD_HASH + " TEXT)";
+        db.execSQL(createPasswordTable);
     }
 
     @Override
@@ -123,6 +161,36 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         if (oldVersion < 4) {
             // checked 컬럼 추가
             db.execSQL("ALTER TABLE " + TABLE_TODO + " ADD COLUMN " + COL_TODO_CHECKED + " INTEGER DEFAULT 0");
+        }
+        if (oldVersion < 5) {
+            // deleted_at 컬럼 추가 (메모, 노트)
+            db.execSQL("ALTER TABLE " + TABLE_MEMO + " ADD COLUMN " + COL_MEMO_DELETED_AT + " INTEGER");
+            db.execSQL("ALTER TABLE " + TABLE_NOTE + " ADD COLUMN " + COL_NOTE_DELETED_AT + " INTEGER");
+        }
+        if (oldVersion < 6) {
+            // locked 컬럼 추가 (노트)
+            db.execSQL("ALTER TABLE " + TABLE_NOTE + " ADD COLUMN " + COL_NOTE_LOCKED + " INTEGER DEFAULT 0");
+        }
+        if (oldVersion < 7) {
+            // 암호 설정 테이블 생성
+            db.execSQL("CREATE TABLE IF NOT EXISTS " + TABLE_PASSWORD + " (" +
+                    COL_PASSWORD_ID + " INTEGER PRIMARY KEY AUTOINCREMENT, " +
+                    COL_PASSWORD_HASH + " TEXT)");
+            
+            // 기존 SharedPreferences에서 암호 해시를 가져와서 DB에 저장
+            try {
+                android.content.SharedPreferences prefs = context.getSharedPreferences("ToDoNotePrefs", Context.MODE_PRIVATE);
+                String existingHash = prefs.getString("note_password_hash", null);
+                if (existingHash != null) {
+                    ContentValues values = new ContentValues();
+                    values.put(COL_PASSWORD_HASH, existingHash);
+                    db.insert(TABLE_PASSWORD, null, values);
+                    // SharedPreferences에서 제거
+                    prefs.edit().remove("note_password_hash").apply();
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
         }
     }
 
@@ -312,7 +380,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     public List<MemoItem> getAllMemos() {
         List<MemoItem> memoList = new ArrayList<>();
         SQLiteDatabase db = this.getReadableDatabase();
-        Cursor cursor = db.query(TABLE_MEMO, null, null, null, null, null, COL_MEMO_ORDER + " ASC");
+        String selection = COL_MEMO_DELETED_AT + " IS NULL";
+        Cursor cursor = db.query(TABLE_MEMO, null, selection, null, null, null, COL_MEMO_ORDER + " ASC");
 
         if (cursor.moveToFirst()) {
             do {
@@ -324,6 +393,10 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 int orderIndex = cursor.getColumnIndex(COL_MEMO_ORDER);
                 if (orderIndex >= 0) {
                     memo.setOrder(cursor.getInt(orderIndex));
+                }
+                int deletedAtIndex = cursor.getColumnIndex(COL_MEMO_DELETED_AT);
+                if (deletedAtIndex >= 0 && !cursor.isNull(deletedAtIndex)) {
+                    memo.setDeletedAt(cursor.getLong(deletedAtIndex));
                 }
                 memoList.add(memo);
             } while (cursor.moveToNext());
@@ -345,6 +418,53 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     }
 
     public int deleteMemo(long id) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        ContentValues values = new ContentValues();
+        values.put(COL_MEMO_DELETED_AT, System.currentTimeMillis());
+        int result = db.update(TABLE_MEMO, values, COL_MEMO_ID + " = ?", new String[]{String.valueOf(id)});
+        db.close();
+        return result;
+    }
+
+    public List<MemoItem> getDeletedMemos() {
+        List<MemoItem> memoList = new ArrayList<>();
+        SQLiteDatabase db = this.getReadableDatabase();
+        String selection = COL_MEMO_DELETED_AT + " IS NOT NULL";
+        Cursor cursor = db.query(TABLE_MEMO, null, selection, null, null, null, COL_MEMO_DELETED_AT + " DESC");
+
+        if (cursor.moveToFirst()) {
+            do {
+                MemoItem memo = new MemoItem();
+                memo.setId(cursor.getLong(cursor.getColumnIndexOrThrow(COL_MEMO_ID)));
+                memo.setContent(cursor.getString(cursor.getColumnIndexOrThrow(COL_MEMO_CONTENT)));
+                memo.setCreatedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_MEMO_CREATED_AT)));
+                memo.setUpdatedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_MEMO_UPDATED_AT)));
+                int orderIndex = cursor.getColumnIndex(COL_MEMO_ORDER);
+                if (orderIndex >= 0) {
+                    memo.setOrder(cursor.getInt(orderIndex));
+                }
+                int deletedAtIndex = cursor.getColumnIndex(COL_MEMO_DELETED_AT);
+                if (deletedAtIndex >= 0 && !cursor.isNull(deletedAtIndex)) {
+                    memo.setDeletedAt(cursor.getLong(deletedAtIndex));
+                }
+                memoList.add(memo);
+            } while (cursor.moveToNext());
+        }
+        cursor.close();
+        db.close();
+        return memoList;
+    }
+
+    public int restoreMemo(long id) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        ContentValues values = new ContentValues();
+        values.putNull(COL_MEMO_DELETED_AT);
+        int result = db.update(TABLE_MEMO, values, COL_MEMO_ID + " = ?", new String[]{String.valueOf(id)});
+        db.close();
+        return result;
+    }
+
+    public int permanentlyDeleteMemo(long id) {
         SQLiteDatabase db = this.getWritableDatabase();
         int result = db.delete(TABLE_MEMO, COL_MEMO_ID + " = ?", new String[]{String.valueOf(id)});
         db.close();
@@ -376,6 +496,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         values.put(COL_NOTE_CONTENT, note.getContent());
         values.put(COL_NOTE_CREATED_AT, System.currentTimeMillis());
         values.put(COL_NOTE_UPDATED_AT, System.currentTimeMillis());
+        values.put(COL_NOTE_LOCKED, note.isLocked() ? 1 : 0);
 
         long id = db.insert(TABLE_NOTE, null, values);
         db.close();
@@ -385,7 +506,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     public List<NoteItem> getAllNotes() {
         List<NoteItem> noteList = new ArrayList<>();
         SQLiteDatabase db = this.getReadableDatabase();
-        Cursor cursor = db.query(TABLE_NOTE, null, null, null, null, null, COL_NOTE_CREATED_AT + " DESC");
+        String selection = COL_NOTE_DELETED_AT + " IS NULL";
+        Cursor cursor = db.query(TABLE_NOTE, null, selection, null, null, null, COL_NOTE_CREATED_AT + " DESC");
 
         if (cursor.moveToFirst()) {
             do {
@@ -395,6 +517,14 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 note.setContent(cursor.getString(cursor.getColumnIndexOrThrow(COL_NOTE_CONTENT)));
                 note.setCreatedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_NOTE_CREATED_AT)));
                 note.setUpdatedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_NOTE_UPDATED_AT)));
+                int deletedAtIndex = cursor.getColumnIndex(COL_NOTE_DELETED_AT);
+                if (deletedAtIndex >= 0 && !cursor.isNull(deletedAtIndex)) {
+                    note.setDeletedAt(cursor.getLong(deletedAtIndex));
+                }
+                int lockedIndex = cursor.getColumnIndex(COL_NOTE_LOCKED);
+                if (lockedIndex >= 0) {
+                    note.setLocked(cursor.getInt(lockedIndex) == 1);
+                }
                 noteList.add(note);
             } while (cursor.moveToNext());
         }
@@ -409,6 +539,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         values.put(COL_NOTE_TITLE, note.getTitle());
         values.put(COL_NOTE_CONTENT, note.getContent());
         values.put(COL_NOTE_UPDATED_AT, System.currentTimeMillis());
+        values.put(COL_NOTE_LOCKED, note.isLocked() ? 1 : 0);
 
         int result = db.update(TABLE_NOTE, values, COL_NOTE_ID + " = ?", new String[]{String.valueOf(note.getId())});
         db.close();
@@ -416,6 +547,54 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     }
 
     public int deleteNote(long id) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        ContentValues values = new ContentValues();
+        values.put(COL_NOTE_DELETED_AT, System.currentTimeMillis());
+        int result = db.update(TABLE_NOTE, values, COL_NOTE_ID + " = ?", new String[]{String.valueOf(id)});
+        db.close();
+        return result;
+    }
+
+    public List<NoteItem> getDeletedNotes() {
+        List<NoteItem> noteList = new ArrayList<>();
+        SQLiteDatabase db = this.getReadableDatabase();
+        String selection = COL_NOTE_DELETED_AT + " IS NOT NULL";
+        Cursor cursor = db.query(TABLE_NOTE, null, selection, null, null, null, COL_NOTE_DELETED_AT + " DESC");
+
+        if (cursor.moveToFirst()) {
+            do {
+                NoteItem note = new NoteItem();
+                note.setId(cursor.getLong(cursor.getColumnIndexOrThrow(COL_NOTE_ID)));
+                note.setTitle(cursor.getString(cursor.getColumnIndexOrThrow(COL_NOTE_TITLE)));
+                note.setContent(cursor.getString(cursor.getColumnIndexOrThrow(COL_NOTE_CONTENT)));
+                note.setCreatedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_NOTE_CREATED_AT)));
+                note.setUpdatedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_NOTE_UPDATED_AT)));
+                int deletedAtIndex = cursor.getColumnIndex(COL_NOTE_DELETED_AT);
+                if (deletedAtIndex >= 0 && !cursor.isNull(deletedAtIndex)) {
+                    note.setDeletedAt(cursor.getLong(deletedAtIndex));
+                }
+                int lockedIndex = cursor.getColumnIndex(COL_NOTE_LOCKED);
+                if (lockedIndex >= 0) {
+                    note.setLocked(cursor.getInt(lockedIndex) == 1);
+                }
+                noteList.add(note);
+            } while (cursor.moveToNext());
+        }
+        cursor.close();
+        db.close();
+        return noteList;
+    }
+
+    public int restoreNote(long id) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        ContentValues values = new ContentValues();
+        values.putNull(COL_NOTE_DELETED_AT);
+        int result = db.update(TABLE_NOTE, values, COL_NOTE_ID + " = ?", new String[]{String.valueOf(id)});
+        db.close();
+        return result;
+    }
+
+    public int permanentlyDeleteNote(long id) {
         SQLiteDatabase db = this.getWritableDatabase();
         int result = db.delete(TABLE_NOTE, COL_NOTE_ID + " = ?", new String[]{String.valueOf(id)});
         db.close();
@@ -435,11 +614,112 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             note.setContent(cursor.getString(cursor.getColumnIndexOrThrow(COL_NOTE_CONTENT)));
             note.setCreatedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_NOTE_CREATED_AT)));
             note.setUpdatedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_NOTE_UPDATED_AT)));
+            int lockedIndex = cursor.getColumnIndex(COL_NOTE_LOCKED);
+            if (lockedIndex >= 0) {
+                note.setLocked(cursor.getInt(lockedIndex) == 1);
+            }
         }
 
         cursor.close();
         db.close();
         return note;
+    }
+
+    // ========== Note Lock & Password ==========
+
+    /**
+     * 암호를 해시하여 데이터베이스에 저장합니다.
+     */
+    public void setNotePassword(String password) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        String hash = hashPassword(password);
+        
+        // 기존 암호가 있으면 업데이트, 없으면 삽입
+        ContentValues values = new ContentValues();
+        values.put(COL_PASSWORD_HASH, hash);
+        
+        // 기존 레코드 확인
+        Cursor cursor = db.query(TABLE_PASSWORD, null, null, null, null, null, null);
+        if (cursor.moveToFirst()) {
+            // 기존 레코드가 있으면 업데이트
+            db.update(TABLE_PASSWORD, values, null, null);
+        } else {
+            // 기존 레코드가 없으면 삽입
+            db.insert(TABLE_PASSWORD, null, values);
+        }
+        cursor.close();
+        db.close();
+    }
+
+    /**
+     * 저장된 암호 해시를 반환합니다.
+     */
+    public String getNotePasswordHash() {
+        SQLiteDatabase db = this.getReadableDatabase();
+        Cursor cursor = db.query(TABLE_PASSWORD, new String[]{COL_PASSWORD_HASH}, null, null, null, null, null);
+        
+        String hash = null;
+        if (cursor.moveToFirst()) {
+            hash = cursor.getString(cursor.getColumnIndexOrThrow(COL_PASSWORD_HASH));
+        }
+        cursor.close();
+        db.close();
+        return hash;
+    }
+
+    /**
+     * 암호가 설정되어 있는지 확인합니다.
+     */
+    public boolean hasNotePassword() {
+        return getNotePasswordHash() != null;
+    }
+
+    /**
+     * 입력한 암호가 올바른지 확인합니다.
+     */
+    public boolean verifyNotePassword(String password) {
+        String storedHash = getNotePasswordHash();
+        if (storedHash == null) {
+            return false;
+        }
+        String inputHash = hashPassword(password);
+        return storedHash.equals(inputHash);
+    }
+
+    /**
+     * 암호를 제거합니다.
+     */
+    public void removeNotePassword() {
+        SQLiteDatabase db = this.getWritableDatabase();
+        db.delete(TABLE_PASSWORD, null, null);
+        db.close();
+    }
+
+    /**
+     * 암호를 SHA-256으로 해시합니다.
+     */
+    private String hashPassword(String password) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(password.getBytes());
+            return Base64.encodeToString(hash, Base64.NO_WRAP);
+        } catch (NoSuchAlgorithmException e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    /**
+     * 노트를 잠금/잠금해제합니다.
+     */
+    public int toggleNoteLock(long noteId, boolean lock) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        ContentValues values = new ContentValues();
+        values.put(COL_NOTE_LOCKED, lock ? 1 : 0);
+        values.put(COL_NOTE_UPDATED_AT, System.currentTimeMillis());
+        int result = db.update(TABLE_NOTE, values, COL_NOTE_ID + " = ?", new String[]{String.valueOf(noteId)});
+        db.close();
+        return result;
     }
 }
 

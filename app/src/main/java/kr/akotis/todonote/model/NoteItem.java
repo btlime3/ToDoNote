@@ -6,6 +6,8 @@ public class NoteItem {
     private String content;
     private long createdAt;
     private long updatedAt;
+    private long deletedAt;
+    private boolean isLocked;
 
     public NoteItem() {
     }
@@ -55,6 +57,22 @@ public class NoteItem {
 
     public void setUpdatedAt(long updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public long getDeletedAt() {
+        return deletedAt;
+    }
+
+    public void setDeletedAt(long deletedAt) {
+        this.deletedAt = deletedAt;
+    }
+
+    public boolean isLocked() {
+        return isLocked;
+    }
+
+    public void setLocked(boolean locked) {
+        isLocked = locked;
     }
 }
 
