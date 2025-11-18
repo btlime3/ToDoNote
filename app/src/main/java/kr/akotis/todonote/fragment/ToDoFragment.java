@@ -254,11 +254,11 @@ public class ToDoFragment extends Fragment {
             // 완료되지 않은 항목만 가져오기
             List<ToDoItem> activeTodos = dbHelper.getActiveToDos();
             
-            // ToDo가 있는 날짜 수집 (모든 ToDo 포함 - 달력 표시용)
-            List<ToDoItem> allTodos = dbHelper.getAllToDos();
+            // ToDo가 있는 날짜 수집 (완료되지 않은 항목만 - 달력 표시용)
+            List<ToDoItem> activeTodosForCalendar = dbHelper.getActiveToDos();
             datesWithTodos.clear();
             Calendar cal = Calendar.getInstance();
-            for (ToDoItem todo : allTodos) {
+            for (ToDoItem todo : activeTodosForCalendar) {
                 cal.setTimeInMillis(todo.getDate());
                 cal.set(Calendar.HOUR_OF_DAY, 0);
                 cal.set(Calendar.MINUTE, 0);
