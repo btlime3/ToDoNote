@@ -1,4 +1,4 @@
-package kr.akotis.todonote;
+package kr.akotis.todonote.adapter;
 
 import android.text.method.LinkMovementMethod;
 import android.view.LayoutInflater;
@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+import kr.akotis.todonote.R;
 import kr.akotis.todonote.model.MemoItem;
 
 public class MemoAdapter extends RecyclerView.Adapter<MemoAdapter.MemoViewHolder> {

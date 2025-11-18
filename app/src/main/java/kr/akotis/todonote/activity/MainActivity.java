@@ -1,4 +1,4 @@
-package kr.akotis.todonote;
+package kr.akotis.todonote.activity;
 
 import android.app.AlertDialog;
 import android.content.ContentResolver;
@@ -30,6 +30,9 @@ import androidx.core.view.WindowInsetsControllerCompat;
 import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.fragment.app.Fragment;
 
+import android.Manifest;
+import android.content.pm.PackageManager;
+
 import androidx.biometric.BiometricManager;
 import androidx.biometric.BiometricPrompt;
 import androidx.core.content.ContextCompat;
@@ -52,7 +55,13 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
+import kr.akotis.todonote.R;
 import kr.akotis.todonote.database.DatabaseHelper;
+import kr.akotis.todonote.fragment.CompletedToDoFragment;
+import kr.akotis.todonote.fragment.MemoFragment;
+import kr.akotis.todonote.fragment.NoteFragment;
+import kr.akotis.todonote.fragment.ToDoFragment;
+import kr.akotis.todonote.fragment.TrashFragment;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -61,6 +70,7 @@ public class MainActivity extends AppCompatActivity {
     private ActionBarDrawerToggle drawerToggle;
     
     private ActivityResultLauncher<Intent> importDbLauncher;
+    private ActivityResultLauncher<String> notificationPermissionLauncher;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -84,6 +94,10 @@ public class MainActivity extends AppCompatActivity {
         setupBottomNavigation();
         setupWindowInsets();
         setupImportLauncher();
+        setupNotificationPermission();
+        
+        // 알림 권한 확인 및 요청
+        checkAndRequestNotificationPermission();
 
         // Intent에서 fragment 파라미터 확인 (위젯에서 호출된 경우)
         String fragmentName = getIntent().getStringExtra("fragment");
@@ -109,6 +123,32 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         );
+    }
+    
+    private void setupNotificationPermission() {
+        notificationPermissionLauncher = registerForActivityResult(
+            new ActivityResultContracts.RequestPermission(),
+            isGranted -> {
+                if (isGranted) {
+                    android.util.Log.d("MainActivity", "알림 권한이 허용되었습니다.");
+                } else {
+                    android.util.Log.w("MainActivity", "알림 권한이 거부되었습니다.");
+                    Toast.makeText(this, "알림을 받으려면 설정에서 알림 권한을 허용해주세요.", Toast.LENGTH_LONG).show();
+                }
+            }
+        );
+    }
+    
+    private void checkAndRequestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) 
+                    != PackageManager.PERMISSION_GRANTED) {
+                android.util.Log.d("MainActivity", "알림 권한이 없습니다. 권한을 요청합니다.");
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS);
+            } else {
+                android.util.Log.d("MainActivity", "알림 권한이 이미 허용되어 있습니다.");
+            }
+        }
     }
 
     private void setupToolbar() {
@@ -166,7 +206,7 @@ public class MainActivity extends AppCompatActivity {
 
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("정보")
-                .setMessage("ToDoNote\n버전: " + versionName + "\n\n할 일과 메모를 한 곳에서 관리하는 간편한 앱입니다.\n개발자 문의: github.com/btlime3/ToDoNote/issues")
+                .setMessage("ToDoNote\n버전: " + versionName + "\n\n할 일과 메모를 한 곳에서 관리하는 간편한 앱입니다.\n\n• ToDo 체크 해제 시 알림 수신 기능이 꺼집니다\n• 알림 시간 '아침' 선택 시 매일 8시 50분에 알림이 옵니다\n\n개발자 문의: github.com/btlime3/ToDoNote/issues")
                 .setPositiveButton("확인", null)
                 .create()
                 .show();
@@ -568,3 +608,4 @@ public class MainActivity extends AppCompatActivity {
         builder.show();
     }
 }
+

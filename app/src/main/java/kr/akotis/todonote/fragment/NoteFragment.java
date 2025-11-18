@@ -1,4 +1,4 @@
-package kr.akotis.todonote;
+package kr.akotis.todonote.fragment;
 
 import android.os.Bundle;
 import android.text.Editable;
@@ -25,6 +25,7 @@ import com.google.android.material.textfield.TextInputLayout;
 import java.util.ArrayList;
 import java.util.List;
 
+import kr.akotis.todonote.R;
 import kr.akotis.todonote.adapter.NoteAdapter;
 import kr.akotis.todonote.database.DatabaseHelper;
 import kr.akotis.todonote.model.NoteItem;
@@ -263,3 +264,4 @@ public class NoteFragment extends Fragment {
         }
     }
 }
+

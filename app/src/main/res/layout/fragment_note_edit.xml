@@ -13,8 +13,8 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:padding="12dp"
-        android:gravity="end|center_vertical"
+        android:padding="16dp"
+        android:gravity="end"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent">
@@ -24,23 +24,17 @@
             android:id="@+id/btn_cancel"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginEnd="6dp"
+            android:layout_marginEnd="8dp"
             android:text="취소"
-            android:textSize="12sp"
-            android:paddingStart="12dp"
-            android:paddingEnd="12dp"
-            style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+            style="@style/Widget.MaterialComponents.Button.TextButton" />
 
         <!-- 삭제 버튼 (편집 모드일 때만 표시) -->
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btn_delete"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginEnd="6dp"
+            android:layout_marginEnd="8dp"
             android:text="삭제"
-            android:textSize="12sp"
-            android:paddingStart="12dp"
-            android:paddingEnd="12dp"
             android:visibility="gone"
             app:backgroundTint="@android:color/holo_red_dark" />
 
@@ -51,9 +45,6 @@
             android:layout_height="wrap_content"
             android:layout_marginEnd="8dp"
             android:text="잠금"
-            android:textSize="12sp"
-            android:paddingStart="12dp"
-            android:paddingEnd="12dp"
             android:visibility="gone"
             app:backgroundTint="#FFC107"
             app:strokeWidth="0dp" />
@@ -63,11 +54,7 @@
             android:id="@+id/btn_save"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="저장"
-            android:textSize="12sp"
-            android:paddingStart="12dp"
-            android:paddingEnd="12dp"
-            app:backgroundTint="@color/color_primary" />
+            android:text="저장" />
 
     </LinearLayout>
 
@@ -84,15 +71,15 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:padding="16dp"
-            android:paddingBottom="16dp">
+            android:padding="20dp">
 
             <!-- 노트 제목 -->
             <com.google.android.material.textfield.TextInputLayout
                 android:id="@+id/title_layout"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:hint="노트 제목"
+                android:hint="제목"
+                android:layout_marginBottom="16dp"
                 app:boxBackgroundMode="outline">
 
                 <com.google.android.material.textfield.TextInputEditText
@@ -108,8 +95,7 @@
                 android:id="@+id/content_layout"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:hint="노트 내용"
-                android:layout_marginTop="16dp"
+                android:hint="내용"
                 app:boxBackgroundMode="outline">
 
                 <com.google.android.material.textfield.TextInputEditText
@@ -118,7 +104,7 @@
                     android:layout_height="wrap_content"
                     android:gravity="top|start"
                     android:inputType="textMultiLine"
-                    android:minLines="10"
+                    android:minLines="12"
                     android:scrollbars="vertical" />
             </com.google.android.material.textfield.TextInputLayout>
 

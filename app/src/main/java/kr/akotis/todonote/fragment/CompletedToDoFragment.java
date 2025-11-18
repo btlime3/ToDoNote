@@ -1,4 +1,4 @@
-package kr.akotis.todonote;
+package kr.akotis.todonote.fragment;
 
 import android.os.Bundle;
 import android.view.LayoutInflater;
@@ -19,6 +19,8 @@ import java.util.UUID;
 
 import androidx.work.WorkManager;
 
+import kr.akotis.todonote.R;
+import kr.akotis.todonote.adapter.ToDoAdapter;
 import kr.akotis.todonote.database.DatabaseHelper;
 import kr.akotis.todonote.model.ToDoItem;
 

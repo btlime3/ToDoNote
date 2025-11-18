@@ -1,4 +1,4 @@
-package kr.akotis.todonote;
+package kr.akotis.todonote.fragment;
 
 import android.app.DatePickerDialog;
 import android.app.TimePickerDialog;
@@ -43,8 +43,11 @@ import androidx.work.ExistingWorkPolicy;
 import androidx.work.OneTimeWorkRequest;
 import androidx.work.WorkManager;
 
+import kr.akotis.todonote.R;
+import kr.akotis.todonote.adapter.ToDoAdapter;
 import kr.akotis.todonote.database.DatabaseHelper;
 import kr.akotis.todonote.model.ToDoItem;
+import kr.akotis.todonote.widget.ToDoWidgetProvider;
 import kr.akotis.todonote.worker.ToDoNotificationWorker;
 
 public class ToDoFragment extends Fragment {
@@ -93,9 +96,15 @@ public class ToDoFragment extends Fragment {
         recyclerTodo.setLayoutManager(new LinearLayoutManager(requireContext()));
         recyclerTodo.setAdapter(todoAdapter);
         
-        // 체크박스 리스너 제거 (todo 화면에서는 체크박스로 완료 처리하지 않음)
-        // 완료는 스와이프로만 처리
-        todoAdapter.setOnToDoCheckedChangeListener(null);
+        // 체크박스 리스너 설정 (체크 시 알림 취소)
+        todoAdapter.setOnToDoCheckedChangeListener((todo, isChecked) -> {
+            if (isChecked && todo.getWorkRequestId() != null) {
+                // 체크 표시 시 알림 취소
+                cancelNotification(todo.getWorkRequestId());
+                todo.setWorkRequestId(null);
+                dbHelper.updateToDo(todo);
+            }
+        });
 
         // 스와이프 제스처 설정
         setupSwipeGesture();
@@ -629,9 +638,12 @@ public class ToDoFragment extends Fragment {
         Calendar notificationTime = Calendar.getInstance();
         notificationTime.add(Calendar.MILLISECOND, (int) delayMillis);
         
-        // 알림 시간을 기반으로 태그 생성 (년월일시분까지 - 겹치는 알림 방지)
+        // 알림 태그 생성: ToDo ID와 알림 시간을 조합하여 각 ToDo마다 고유한 태그 생성
+        // 같은 ToDo에서 같은 시간 알림이 중복 예약되는 것을 방지하면서,
+        // 서로 다른 ToDo는 같은 시간에도 각각 알림이 표시되도록 함
         String notificationTag = String.format(Locale.getDefault(), 
-                "todo_notification_%04d%02d%02d_%02d%02d",
+                "todo_notification_%d_%04d%02d%02d_%02d%02d",
+                todo.getId(),
                 notificationTime.get(Calendar.YEAR),
                 notificationTime.get(Calendar.MONTH) + 1,
                 notificationTime.get(Calendar.DAY_OF_MONTH),
@@ -646,10 +658,11 @@ public class ToDoFragment extends Fragment {
         OneTimeWorkRequest workRequest = new OneTimeWorkRequest.Builder(ToDoNotificationWorker.class)
                 .setInitialDelay(delayMillis, TimeUnit.MILLISECONDS)
                 .setInputData(inputData)
-                .addTag(notificationTag) // 같은 시간의 알림은 같은 태그 사용
+                .addTag(notificationTag) // ToDo별로 고유한 태그 사용
                 .build();
 
         // 같은 태그의 작업이 이미 있으면 새 작업을 무시 (KEEP 정책)
+        // 같은 ToDo에서 같은 시간 알림이 중복 예약되는 것을 방지
         WorkManager.getInstance(requireContext())
                 .enqueueUniqueWork(notificationTag, 
                         ExistingWorkPolicy.KEEP, 
@@ -767,3 +780,4 @@ public class ToDoFragment extends Fragment {
         }
     }
 }
+

@@ -1,4 +1,4 @@
-package kr.akotis.todonote;
+package kr.akotis.todonote.adapter;
 
 import android.view.LayoutInflater;
 import android.view.View;
@@ -16,6 +16,7 @@ import java.util.Calendar;
 import java.util.List;
 import java.util.Locale;
 
+import kr.akotis.todonote.R;
 import kr.akotis.todonote.database.DatabaseHelper;
 import kr.akotis.todonote.model.ToDoItem;
 
@@ -306,3 +307,4 @@ public class ToDoAdapter extends RecyclerView.Adapter<ToDoAdapter.ToDoViewHolder
         }
     }
 }
+

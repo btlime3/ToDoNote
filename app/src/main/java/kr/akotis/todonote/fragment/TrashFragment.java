@@ -1,4 +1,4 @@
-package kr.akotis.todonote;
+package kr.akotis.todonote.fragment;
 
 import android.os.Bundle;
 import android.view.LayoutInflater;
@@ -19,6 +19,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
+import kr.akotis.todonote.R;
 import kr.akotis.todonote.adapter.TrashAdapter;
 import kr.akotis.todonote.database.DatabaseHelper;
 import kr.akotis.todonote.model.MemoItem;

@@ -1,4 +1,4 @@
-package kr.akotis.todonote;
+package kr.akotis.todonote.fragment;
 
 import android.app.AlertDialog;
 import android.os.Bundle;
@@ -24,6 +24,8 @@ import com.google.android.material.textfield.TextInputEditText;
 
 import java.util.List;
 
+import kr.akotis.todonote.R;
+import kr.akotis.todonote.adapter.MemoAdapter;
 import kr.akotis.todonote.database.DatabaseHelper;
 import kr.akotis.todonote.model.MemoItem;
 

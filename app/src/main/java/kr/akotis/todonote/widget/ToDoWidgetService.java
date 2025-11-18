@@ -1,4 +1,4 @@
-package kr.akotis.todonote;
+package kr.akotis.todonote.widget;
 
 import android.app.PendingIntent;
 import android.appwidget.AppWidgetManager;
@@ -14,6 +14,8 @@ import java.util.Calendar;
 import java.util.List;
 import java.util.Locale;
 
+import kr.akotis.todonote.R;
+import kr.akotis.todonote.activity.MainActivity;
 import kr.akotis.todonote.database.DatabaseHelper;
 import kr.akotis.todonote.model.ToDoItem;
 

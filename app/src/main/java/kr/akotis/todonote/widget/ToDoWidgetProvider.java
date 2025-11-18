@@ -1,4 +1,4 @@
-package kr.akotis.todonote;
+package kr.akotis.todonote.widget;
 
 import android.app.PendingIntent;
 import android.appwidget.AppWidgetManager;
@@ -10,6 +10,12 @@ import android.net.Uri;
 import android.util.Log;
 import android.widget.RemoteViews;
 
+import androidx.work.WorkManager;
+
+import java.util.UUID;
+
+import kr.akotis.todonote.R;
+import kr.akotis.todonote.activity.MainActivity;
 import kr.akotis.todonote.database.DatabaseHelper;
 import kr.akotis.todonote.model.ToDoItem;
 
@@ -25,7 +31,7 @@ public class ToDoWidgetProvider extends AppWidgetProvider {
         }
     }
 
-    static void updateAppWidget(Context context, AppWidgetManager appWidgetManager, int appWidgetId) {
+    public static void updateAppWidget(Context context, AppWidgetManager appWidgetManager, int appWidgetId) {
         RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_todo);
 
         // RemoteViewsService 설정
@@ -113,6 +119,13 @@ public class ToDoWidgetProvider extends AppWidgetProvider {
                     Log.d("ToDoWidget", "Toggling todo " + todoId + " from " + currentState + " to " + newCheckedState);
                     
                     todo.setChecked(newCheckedState);
+                    
+                    // 체크 표시 시 알림 취소
+                    if (newCheckedState && todo.getWorkRequestId() != null) {
+                        cancelNotification(context, todo.getWorkRequestId());
+                        todo.setWorkRequestId(null);
+                    }
+                    
                     int result = dbHelper.updateToDo(todo);
                     dbHelper.close();
                     
@@ -163,6 +176,21 @@ public class ToDoWidgetProvider extends AppWidgetProvider {
         ComponentName componentName = new ComponentName(context, ToDoWidgetProvider.class);
         int[] appWidgetIds = appWidgetManager.getAppWidgetIds(componentName);
         onUpdate(context, appWidgetManager, appWidgetIds);
+    }
+    
+    /**
+     * 알림 취소
+     */
+    private void cancelNotification(Context context, String workRequestId) {
+        if (workRequestId == null) {
+            return;
+        }
+        try {
+            UUID uuid = UUID.fromString(workRequestId);
+            WorkManager.getInstance(context).cancelWorkById(uuid);
+        } catch (IllegalArgumentException e) {
+            Log.e("ToDoWidgetProvider", "Invalid work request ID: " + workRequestId, e);
+        }
     }
 }
 
