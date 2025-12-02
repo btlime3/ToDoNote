@@ -38,8 +38,10 @@ import java.util.concurrent.TimeUnit;
 import android.widget.ArrayAdapter;
 import android.widget.AutoCompleteTextView;
 
+import androidx.work.Constraints;
 import androidx.work.Data;
 import androidx.work.ExistingWorkPolicy;
+import androidx.work.NetworkType;
 import androidx.work.OneTimeWorkRequest;
 import androidx.work.WorkManager;
 
@@ -438,13 +440,18 @@ public class ToDoFragment extends Fragment {
                         selectedTime[0].getTimeInMillis());
                 newTodo.setNotificationType(selectedNotificationType[0]);
                 
-                // 알림 예약
-                String workRequestId = scheduleNotification(newTodo);
-                newTodo.setWorkRequestId(workRequestId);
-                
+                // 먼저 DB에 저장하여 ID를 얻음
                 long id = dbHelper.insertToDo(newTodo);
                 if (id > 0) {
                     newTodo.setId(id);
+                    
+                    // ID가 설정된 후 알림 예약
+                    String workRequestId = scheduleNotification(newTodo);
+                    newTodo.setWorkRequestId(workRequestId);
+                    
+                    // workRequestId를 업데이트
+                    dbHelper.updateToDo(newTodo);
+                    
                     loadToDos();
                     updateWidget();
                     //Toast.makeText(requireContext(), "할 일이 추가되었습니다.", Toast.LENGTH_SHORT).show();
@@ -591,16 +598,12 @@ public class ToDoFragment extends Fragment {
                 AppWidgetManager appWidgetManager = AppWidgetManager.getInstance(getContext());
                 ComponentName componentName = new ComponentName(getContext(), ToDoWidgetProvider.class);
                 int[] appWidgetIds = appWidgetManager.getAppWidgetIds(componentName);
-                android.util.Log.d("ToDoFragment", "updateWidget called, found " + appWidgetIds.length + " widget(s)");
                 if (appWidgetIds.length > 0) {
                     // 모든 위젯 인스턴스 업데이트
                     for (int appWidgetId : appWidgetIds) {
                         ToDoWidgetProvider.updateAppWidget(getContext(), appWidgetManager, appWidgetId);
                     }
                     appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetIds, R.id.widget_todo_list);
-                    android.util.Log.d("ToDoFragment", "Widget update completed");
-                } else {
-                    android.util.Log.d("ToDoFragment", "No widgets found to update");
                 }
             } catch (Exception e) {
                 android.util.Log.e("ToDoFragment", "Error updating widget", e);
@@ -655,18 +658,42 @@ public class ToDoFragment extends Fragment {
                 .putLong("todo_id", todo.getId())
                 .build();
 
+        // Constraints 설정: 배터리 상태와 관계없이 실행되도록 설정
+        Constraints constraints = new Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.NOT_REQUIRED) // 네트워크 불필요
+                .setRequiresBatteryNotLow(false) // 배터리 부족해도 실행
+                .setRequiresCharging(false) // 충전 중이 아니어도 실행
+                .setRequiresDeviceIdle(false) // 기기 유휴 상태가 아니어도 실행
+                .build();
+
         OneTimeWorkRequest workRequest = new OneTimeWorkRequest.Builder(ToDoNotificationWorker.class)
                 .setInitialDelay(delayMillis, TimeUnit.MILLISECONDS)
                 .setInputData(inputData)
+                .setConstraints(constraints) // Constraints 추가
                 .addTag(notificationTag) // ToDo별로 고유한 태그 사용
                 .build();
 
-        // 같은 태그의 작업이 이미 있으면 새 작업을 무시 (KEEP 정책)
-        // 같은 ToDo에서 같은 시간 알림이 중복 예약되는 것을 방지
-        WorkManager.getInstance(requireContext())
-                .enqueueUniqueWork(notificationTag, 
-                        ExistingWorkPolicy.KEEP, 
-                        workRequest);
+        // WorkManager 인스턴스 가져오기
+        WorkManager workManager = WorkManager.getInstance(requireContext());
+        
+        // 기존 작업이 있으면 교체 (REPLACE 정책)
+        // 같은 ToDo에서 같은 시간 알림이 중복 예약되는 것을 방지하면서도 새 알림이 확실히 스케줄되도록 함
+        try {
+            workManager.enqueueUniqueWork(notificationTag, 
+                    ExistingWorkPolicy.REPLACE, 
+                    workRequest);
+            
+            // 실패한 경우만 로그 출력
+            workManager.getWorkInfoByIdLiveData(workRequest.getId())
+                    .observe(getViewLifecycleOwner(), workInfo -> {
+                        if (workInfo != null && workInfo.getState() == androidx.work.WorkInfo.State.FAILED) {
+                            android.util.Log.e("ToDoFragment", "WorkRequest가 실패했습니다: " + workInfo.getOutputData());
+                        }
+                    });
+        } catch (Exception e) {
+            android.util.Log.e("ToDoFragment", "알림 예약 중 오류 발생", e);
+            return null;
+        }
         
         return workRequest.getId().toString();
     }
@@ -696,36 +723,78 @@ public class ToDoFragment extends Fragment {
         // 알림 타입에 따라 시간 조정
         if (notificationType.startsWith("morning_")) {
             // 아침 시간 (8시 50분) 기준
-            notificationTime.set(Calendar.HOUR_OF_DAY, 8);
-            notificationTime.set(Calendar.MINUTE, 50);
-            notificationTime.set(Calendar.SECOND, 0);
-            notificationTime.set(Calendar.MILLISECOND, 0);
+            // ToDo의 날짜에 8시 50분을 설정
+            Calendar morningTime = (Calendar) todoDateTime.clone();
+            morningTime.set(Calendar.HOUR_OF_DAY, 8);
+            morningTime.set(Calendar.MINUTE, 50);
+            morningTime.set(Calendar.SECOND, 0);
+            morningTime.set(Calendar.MILLISECOND, 0);
             
             // 알림 시간만큼 빼기
+            int minutesToSubtract = 0;
+            int hoursToSubtract = 0;
+            
             if (notificationType.equals("morning_10min")) {
-                notificationTime.add(Calendar.MINUTE, -10);
+                minutesToSubtract = 10;
             } else if (notificationType.equals("morning_30min")) {
-                notificationTime.add(Calendar.MINUTE, -30);
+                minutesToSubtract = 30;
             } else if (notificationType.equals("morning_1hour")) {
-                notificationTime.add(Calendar.HOUR_OF_DAY, -1);
+                hoursToSubtract = 1;
             } else if (notificationType.equals("morning_2hour")) {
-                notificationTime.add(Calendar.HOUR_OF_DAY, -2);
+                hoursToSubtract = 2;
             } else if (notificationType.equals("morning_3hour")) {
-                notificationTime.add(Calendar.HOUR_OF_DAY, -3);
+                hoursToSubtract = 3;
+            }
+            
+            morningTime.add(Calendar.HOUR_OF_DAY, -hoursToSubtract);
+            morningTime.add(Calendar.MINUTE, -minutesToSubtract);
+            morningTime.set(Calendar.SECOND, 0);
+            morningTime.set(Calendar.MILLISECOND, 0);
+            
+            // 아침 시간이 이미 지났는지 확인
+            long morningDelay = morningTime.getTimeInMillis() - now.getTimeInMillis();
+            
+            // 아침 시간이 이미 지났고, ToDo 날짜가 오늘이라면 ToDo 시간 기준으로 계산
+            boolean isToday = todoDateTime.get(Calendar.YEAR) == now.get(Calendar.YEAR) &&
+                    todoDateTime.get(Calendar.MONTH) == now.get(Calendar.MONTH) &&
+                    todoDateTime.get(Calendar.DAY_OF_MONTH) == now.get(Calendar.DAY_OF_MONTH);
+            
+            if (morningDelay <= 0 && isToday) {
+                // 아침 시간이 지났고 오늘이면, ToDo 시간 기준으로 알림 설정
+                notificationTime = (Calendar) todoDateTime.clone();
+                notificationTime.set(Calendar.SECOND, 0);
+                notificationTime.set(Calendar.MILLISECOND, 0);
+                
+                // 알림 시간만큼 빼기 (ToDo 시간 기준)
+                notificationTime.add(Calendar.HOUR_OF_DAY, -hoursToSubtract);
+                notificationTime.add(Calendar.MINUTE, -minutesToSubtract);
+                notificationTime.set(Calendar.SECOND, 0);
+                notificationTime.set(Calendar.MILLISECOND, 0);
+            } else {
+                // 아침 시간이 아직 안 지났거나 내일 이후면 아침 시간 사용
+                notificationTime = morningTime;
             }
         } else {
             // ToDo 시간 기준으로 빼기
+            int minutesToSubtract = 0;
+            int hoursToSubtract = 0;
+            
             if (notificationType.equals("10min")) {
-                notificationTime.add(Calendar.MINUTE, -10);
+                minutesToSubtract = 10;
             } else if (notificationType.equals("30min")) {
-                notificationTime.add(Calendar.MINUTE, -30);
+                minutesToSubtract = 30;
             } else if (notificationType.equals("1hour")) {
-                notificationTime.add(Calendar.HOUR_OF_DAY, -1);
+                hoursToSubtract = 1;
             } else if (notificationType.equals("2hour")) {
-                notificationTime.add(Calendar.HOUR_OF_DAY, -2);
+                hoursToSubtract = 2;
             } else if (notificationType.equals("3hour")) {
-                notificationTime.add(Calendar.HOUR_OF_DAY, -3);
+                hoursToSubtract = 3;
             }
+            
+            notificationTime.add(Calendar.HOUR_OF_DAY, -hoursToSubtract);
+            notificationTime.add(Calendar.MINUTE, -minutesToSubtract);
+            notificationTime.set(Calendar.SECOND, 0);
+            notificationTime.set(Calendar.MILLISECOND, 0);
         }
 
         return notificationTime.getTimeInMillis() - now.getTimeInMillis();

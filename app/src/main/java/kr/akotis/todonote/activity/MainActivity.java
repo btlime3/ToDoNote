@@ -31,7 +31,13 @@ import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.fragment.app.Fragment;
 
 import android.Manifest;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.net.Uri;
+import android.os.PowerManager;
+import android.provider.Settings;
 
 import androidx.biometric.BiometricManager;
 import androidx.biometric.BiometricPrompt;
@@ -98,6 +104,12 @@ public class MainActivity extends AppCompatActivity {
         
         // 알림 권한 확인 및 요청
         checkAndRequestNotificationPermission();
+        
+        // 배터리 최적화 해제 요청
+        checkAndRequestBatteryOptimization();
+        
+        // 알림 채널 미리 생성 (앱이 꺼진 상태에서도 알림이 작동하도록)
+        createNotificationChannel();
 
         // Intent에서 fragment 파라미터 확인 (위젯에서 호출된 경우)
         String fragmentName = getIntent().getStringExtra("fragment");
@@ -129,10 +141,7 @@ public class MainActivity extends AppCompatActivity {
         notificationPermissionLauncher = registerForActivityResult(
             new ActivityResultContracts.RequestPermission(),
             isGranted -> {
-                if (isGranted) {
-                    android.util.Log.d("MainActivity", "알림 권한이 허용되었습니다.");
-                } else {
-                    android.util.Log.w("MainActivity", "알림 권한이 거부되었습니다.");
+                if (!isGranted) {
                     Toast.makeText(this, "알림을 받으려면 설정에서 알림 권한을 허용해주세요.", Toast.LENGTH_LONG).show();
                 }
             }
@@ -143,10 +152,67 @@ public class MainActivity extends AppCompatActivity {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) 
                     != PackageManager.PERMISSION_GRANTED) {
-                android.util.Log.d("MainActivity", "알림 권한이 없습니다. 권한을 요청합니다.");
                 notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS);
-            } else {
-                android.util.Log.d("MainActivity", "알림 권한이 이미 허용되어 있습니다.");
+            }
+        }
+    }
+    
+    private void createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            String channelId = "todo_notification_channel";
+            CharSequence name = "ToDo 알림";
+            String description = "할 일 알림 채널";
+            int importance = NotificationManager.IMPORTANCE_HIGH;
+            NotificationChannel channel = new NotificationChannel(channelId, name, importance);
+            channel.setDescription(description);
+            channel.enableLights(true);
+            channel.enableVibration(true);
+            
+            NotificationManager notificationManager = getSystemService(NotificationManager.class);
+            if (notificationManager != null) {
+                notificationManager.createNotificationChannel(channel);
+            }
+        }
+    }
+    
+    private void checkAndRequestBatteryOptimization() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
+            if (powerManager != null && !powerManager.isIgnoringBatteryOptimizations(getPackageName())) {
+                // SharedPreferences로 한 번만 표시하도록 체크
+                SharedPreferences prefs = getSharedPreferences("app_prefs", MODE_PRIVATE);
+                boolean batteryOptShown = prefs.getBoolean("battery_opt_dialog_shown", false);
+                
+                if (!batteryOptShown) {
+                    // 배터리 최적화 해제 요청 다이얼로그 표시
+                    new MaterialAlertDialogBuilder(this)
+                            .setTitle("배터리 최적화 해제")
+                            .setMessage("알림이 정상적으로 작동하려면 배터리 최적화를 해제해야 합니다.\n설정으로 이동하시겠습니까?")
+                            .setPositiveButton("설정으로 이동", (dialog, which) -> {
+                                try {
+                                    Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+                                    intent.setData(Uri.parse("package:" + getPackageName()));
+                                    startActivity(intent);
+                                } catch (Exception e) {
+                                    // 일부 기기에서는 ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS가 지원되지 않을 수 있음
+                                    // 대신 일반 설정 화면으로 이동
+                                    try {
+                                        Intent intent = new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
+                                        startActivity(intent);
+                                    } catch (Exception ex) {
+                                android.util.Log.e("MainActivity", "배터리 최적화 설정 화면을 열 수 없습니다.", ex);
+                            }
+                        }
+                        // 다이얼로그 표시 여부 저장
+                        prefs.edit().putBoolean("battery_opt_dialog_shown", true).apply();
+                    })
+                    .setNegativeButton("나중에", (dialog, which) -> {
+                        // 나중에 선택해도 다이얼로그 표시 여부 저장
+                        prefs.edit().putBoolean("battery_opt_dialog_shown", true).apply();
+                    })
+                    .setCancelable(false)
+                    .show();
+                }
             }
         }
     }

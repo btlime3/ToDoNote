@@ -30,6 +30,7 @@ public class ToDoNotificationWorker extends Worker {
         long todoId = getInputData().getLong("todo_id", -1);
         
         if (todoId == -1) {
+            android.util.Log.e("ToDoNotificationWorker", "ToDo ID가 유효하지 않습니다.");
             return Result.failure();
         }
 
@@ -38,18 +39,7 @@ public class ToDoNotificationWorker extends Worker {
         dbHelper.close();
 
         // ToDo가 삭제되었거나 완료된 경우 알림 표시하지 않음
-        if (todo == null) {
-            // ToDo가 삭제된 경우
-            return Result.success();
-        }
-        
-        if (todo.isCompleted()) {
-            // ToDo가 완료된 경우
-            return Result.success();
-        }
-        
-        if (todo.isChecked()) {
-            // ToDo가 체크 표시된 경우 알림 표시하지 않음
+        if (todo == null || todo.isCompleted() || todo.isChecked()) {
             return Result.success();
         }
 
@@ -94,6 +84,8 @@ public class ToDoNotificationWorker extends Worker {
                 getApplicationContext().getSystemService(Context.NOTIFICATION_SERVICE);
         if (notificationManager != null) {
             notificationManager.notify((int) todoId, builder.build());
+        } else {
+            android.util.Log.e("ToDoNotificationWorker", "NotificationManager를 가져올 수 없습니다.");
         }
 
         return Result.success();
