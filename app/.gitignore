@@ -2,3 +2,5 @@
 /release
 *.aab
 *.apk
+google-services.json
+todonote*.json

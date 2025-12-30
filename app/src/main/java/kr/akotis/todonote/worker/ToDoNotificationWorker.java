@@ -39,7 +39,8 @@ public class ToDoNotificationWorker extends Worker {
         dbHelper.close();
 
         // ToDo가 삭제되었거나 완료된 경우 알림 표시하지 않음
-        if (todo == null || todo.isCompleted() || todo.isChecked()) {
+        // 체크 상태와는 무관하게 알림 설정이 되어있다면 알림 표시
+        if (todo == null || todo.isCompleted()) {
             return Result.success();
         }
 

@@ -53,6 +53,27 @@
             android:ellipsize="end"
             android:visibility="gone" />
 
+        <!-- 알림인 경우: 제목과 본문 표시 -->
+        <TextView
+            android:id="@+id/tv_message_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:textColor="@color/color_text_dark"
+            android:layout_marginBottom="8dp"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/tv_message_body"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="14sp"
+            android:textColor="@color/color_text_dark"
+            android:maxLines="5"
+            android:ellipsize="end"
+            android:visibility="gone" />
+
         <!-- 잠금 아이콘 (잠금된 노트인 경우) -->
         <FrameLayout
             android:id="@+id/layout_locked"

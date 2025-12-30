@@ -28,9 +28,11 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -70,6 +72,7 @@ public class ToDoFragment extends Fragment {
     private Calendar selectedDate;
     private Calendar filteredDate; // 필터링된 날짜 (null이면 전체 보기)
     private Set<Long> datesWithTodos;
+    private Set<String> koreanHolidays; // 한국 공휴일 (MM-dd 형식)
 
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
@@ -91,6 +94,8 @@ public class ToDoFragment extends Fragment {
         selectedDate = Calendar.getInstance();
         filteredDate = null; // 전체 보기
         datesWithTodos = new HashSet<>();
+        koreanHolidays = new HashSet<>();
+        initKoreanHolidays();
 
         // RecyclerView 설정
         todoAdapter = new ToDoAdapter();
@@ -98,14 +103,11 @@ public class ToDoFragment extends Fragment {
         recyclerTodo.setLayoutManager(new LinearLayoutManager(requireContext()));
         recyclerTodo.setAdapter(todoAdapter);
         
-        // 체크박스 리스너 설정 (체크 시 알림 취소)
+        // 체크박스 리스너 설정
         todoAdapter.setOnToDoCheckedChangeListener((todo, isChecked) -> {
-            if (isChecked && todo.getWorkRequestId() != null) {
-                // 체크 표시 시 알림 취소
-                cancelNotification(todo.getWorkRequestId());
-                todo.setWorkRequestId(null);
-                dbHelper.updateToDo(todo);
-            }
+            // 체크 상태 변경 시 DB 업데이트 (알림 기능과 무관)
+            todo.setChecked(isChecked);
+            dbHelper.updateToDo(todo);
         });
 
         // 스와이프 제스처 설정
@@ -132,14 +134,54 @@ public class ToDoFragment extends Fragment {
         return view;
     }
 
+    private void initKoreanHolidays() {
+        // 한국 공휴일 (고정 공휴일 - MM-dd 형식)
+        koreanHolidays.add("01-01"); // 신정
+        koreanHolidays.add("03-01"); // 삼일절
+        koreanHolidays.add("05-05"); // 어린이날
+        koreanHolidays.add("06-06"); // 현충일
+        koreanHolidays.add("08-15"); // 광복절
+        koreanHolidays.add("10-03"); // 개천절
+        koreanHolidays.add("10-09"); // 한글날
+        koreanHolidays.add("12-25"); // 성탄절
+        
+        // 2025년 음력 공휴일 (대체 공휴일 포함)
+        koreanHolidays.add("01-28"); // 설날 전날
+        koreanHolidays.add("01-29"); // 설날
+        koreanHolidays.add("01-30"); // 설날 다음날
+        koreanHolidays.add("05-05"); // 어린이날 (부처님오신날과 같은 날)
+        koreanHolidays.add("05-06"); // 대체공휴일
+        koreanHolidays.add("10-05"); // 추석 전날
+        koreanHolidays.add("10-06"); // 추석
+        koreanHolidays.add("10-07"); // 추석 다음날
+        koreanHolidays.add("10-08"); // 대체공휴일
+    }
+    
+    private boolean isKoreanHoliday(Calendar day) {
+        String dateKey = String.format(Locale.getDefault(), "%02d-%02d", 
+                day.get(Calendar.MONTH) + 1, day.get(Calendar.DAY_OF_MONTH));
+        return koreanHolidays.contains(dateKey);
+    }
+
     private void setupCalendar() {
         // 요일 헤더 설정
         String[] weekdays = {"일", "월", "화", "수", "목", "금", "토"};
-        for (String weekday : weekdays) {
+        int[] weekdayColors = {
+            getResources().getColor(R.color.calendar_sunday, null),    // 일요일 - 빨간색
+            0xFF444444, // 월요일
+            0xFF444444, // 화요일
+            0xFF444444, // 수요일
+            0xFF444444, // 목요일
+            0xFF444444, // 금요일
+            getResources().getColor(R.color.calendar_saturday, null)   // 토요일 - 파란색
+        };
+        
+        for (int i = 0; i < weekdays.length; i++) {
             TextView tv = new TextView(requireContext());
-            tv.setText(weekday);
+            tv.setText(weekdays[i]);
             tv.setTextSize(12);
-            tv.setTextColor(0xFF444444); // color_text_dark
+            tv.setTextColor(weekdayColors[i]);
+            tv.setTypeface(null, android.graphics.Typeface.BOLD);
             tv.setGravity(android.view.Gravity.CENTER);
             GridLayout.LayoutParams params = new GridLayout.LayoutParams();
             params.width = 0;
@@ -200,6 +242,7 @@ public class ToDoFragment extends Fragment {
     private TextView createDayView(Calendar day, Calendar today) {
         TextView dayView = new TextView(requireContext());
         int dayOfMonth = day.get(Calendar.DAY_OF_MONTH);
+        int dayOfWeek = day.get(Calendar.DAY_OF_WEEK);
         dayView.setText(String.valueOf(dayOfMonth));
         dayView.setTextSize(16);
         dayView.setGravity(android.view.Gravity.CENTER);
@@ -223,44 +266,90 @@ public class ToDoFragment extends Fragment {
             day.get(Calendar.YEAR) == filteredDate.get(Calendar.YEAR) &&
             day.get(Calendar.MONTH) == filteredDate.get(Calendar.MONTH) &&
             day.get(Calendar.DAY_OF_MONTH) == filteredDate.get(Calendar.DAY_OF_MONTH);
+        
+        boolean isHoliday = isKoreanHoliday(day);
+        boolean isSunday = dayOfWeek == Calendar.SUNDAY;
+        boolean isSaturday = dayOfWeek == Calendar.SATURDAY;
 
-        // 오늘 날짜 스타일 (가장 강조) - 메인 컬러 사용
-        if (isToday) {
-            dayView.setBackgroundColor(0xFFA0D9C8); // color_primary
-            dayView.setTextColor(0xFFFFFFFF);
-            dayView.setTypeface(null, android.graphics.Typeface.BOLD);
-        } else if (isSelected) {
-            // 선택된 날짜 (필터링 중) - 메인 컬러 연한 버전
-            dayView.setBackgroundColor(0xFFC8E8DC); // color_primary_light
-            dayView.setTextColor(0xFF444444); // color_text_dark
-            dayView.setTypeface(null, android.graphics.Typeface.BOLD);
-        } else if (hasTodos) {
-            // ToDo가 있는 날짜 - 보조 컬러 사용
-            dayView.setBackgroundColor(0xFFF0D5C9); // color_secondary
-            dayView.setTextColor(0xFF444444); // color_text_dark
-            dayView.setTypeface(null, android.graphics.Typeface.BOLD);
+        // 기본 텍스트 색상 결정 (요일/공휴일 기준)
+        int textColor;
+        if (isHoliday || isSunday) {
+            textColor = getResources().getColor(R.color.calendar_sunday, null); // 빨간색
+        } else if (isSaturday) {
+            textColor = getResources().getColor(R.color.calendar_saturday, null); // 파란색
         } else {
-            dayView.setBackgroundColor(0x00000000);
-            dayView.setTextColor(0xFF444444); // color_text_dark
+            textColor = 0xFF444444; // 기본 색상
         }
 
-        // 달력 클릭 비활성화
-        dayView.setOnClickListener(null);
-        dayView.setClickable(false);
+        // 원형 배경 크기 (일관된 크기 유지)
+        int circleSize = (int) (48 * getResources().getDisplayMetrics().density); // 48dp
+        
+        // 스타일 적용 (우선순위: 오늘 > 선택됨 > ToDo 있음 > 기본)
+        android.graphics.drawable.GradientDrawable bg = null;
+
+        if (isToday) {
+            // 오늘 날짜 - 원형 배경으로 강조
+            bg = new android.graphics.drawable.GradientDrawable();
+            bg.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+            bg.setColor(getResources().getColor(R.color.calendar_today_bg, null));
+            dayView.setTextColor(getResources().getColor(R.color.calendar_today_text, null));
+            dayView.setTypeface(null, android.graphics.Typeface.BOLD);
+        } else if (isSelected) {
+            // 선택된 날짜 - 연한 배경
+            bg = new android.graphics.drawable.GradientDrawable();
+            bg.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+            bg.setColor(getResources().getColor(R.color.calendar_selected, null));
+            dayView.setTextColor(textColor);
+            dayView.setTypeface(null, android.graphics.Typeface.BOLD);
+        } else if (hasTodos) {
+            // ToDo가 있는 날짜 - 연한 원형 배경 표시
+            bg = new android.graphics.drawable.GradientDrawable();
+            bg.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+            bg.setColor(getResources().getColor(R.color.calendar_has_todo_bg, null));
+            dayView.setTextColor(textColor);
+            dayView.setTypeface(null, android.graphics.Typeface.BOLD);
+        } else {
+            // 기본 상태 - 배경 없음
+            dayView.setBackgroundColor(0x00000000);
+            dayView.setTextColor(textColor);
+        }
+
+        // 원형 배경 적용
+        if (bg != null) {
+            bg.setSize(circleSize, circleSize);
+            dayView.setBackground(bg);
+        }
+
+        // 클릭 이벤트 - 해당 날짜의 ToDo 목록 필터링
+        final Calendar clickedDate = (Calendar) dateKey.clone();
+        dayView.setOnClickListener(v -> {
+            if (filteredDate != null && 
+                filteredDate.get(Calendar.YEAR) == clickedDate.get(Calendar.YEAR) &&
+                filteredDate.get(Calendar.MONTH) == clickedDate.get(Calendar.MONTH) &&
+                filteredDate.get(Calendar.DAY_OF_MONTH) == clickedDate.get(Calendar.DAY_OF_MONTH)) {
+                // 같은 날짜 다시 클릭 시 전체 보기로 전환
+                filteredDate = null;
+            } else {
+                // 새 날짜 선택
+                filteredDate = clickedDate;
+            }
+            updateCalendar();
+            filterToDosByDate();
+        });
+        dayView.setClickable(true);
 
         return dayView;
     }
 
     private void loadToDos() {
         recyclerTodo.post(() -> {
-            // 완료되지 않은 항목만 가져오기
-            List<ToDoItem> activeTodos = dbHelper.getActiveToDos();
+            // 모든 ToDo 가져오기 (완료된 항목 포함 - 달력 표시용)
+            List<ToDoItem> allTodos = dbHelper.getAllToDos();
             
-            // ToDo가 있는 날짜 수집 (완료되지 않은 항목만 - 달력 표시용)
-            List<ToDoItem> activeTodosForCalendar = dbHelper.getActiveToDos();
+            // ToDo가 있는 날짜 수집 (완료된 항목 포함)
             datesWithTodos.clear();
             Calendar cal = Calendar.getInstance();
-            for (ToDoItem todo : activeTodosForCalendar) {
+            for (ToDoItem todo : allTodos) {
                 cal.setTimeInMillis(todo.getDate());
                 cal.set(Calendar.HOUR_OF_DAY, 0);
                 cal.set(Calendar.MINUTE, 0);
@@ -276,15 +365,49 @@ public class ToDoFragment extends Fragment {
     }
     
     private void filterToDosByDate() {
-        // 달력 클릭 비활성화로 인해 항상 전체 보기 (완료되지 않은 항목만)
-        List<ToDoItem> activeTodos = dbHelper.getActiveToDos();
-        todoAdapter.setToDos(activeTodos);
+        List<ToDoItem> todosToShow;
+        
+        if (filteredDate != null) {
+            // 선택된 날짜의 ToDo만 표시 (완료된 항목 포함)
+            List<ToDoItem> allTodos = dbHelper.getAllToDos();
+            todosToShow = new ArrayList<>();
+            
+            Calendar filterCal = (Calendar) filteredDate.clone();
+            filterCal.set(Calendar.HOUR_OF_DAY, 0);
+            filterCal.set(Calendar.MINUTE, 0);
+            filterCal.set(Calendar.SECOND, 0);
+            filterCal.set(Calendar.MILLISECOND, 0);
+            long filterDateKey = filterCal.getTimeInMillis();
+            
+            Calendar todoCal = Calendar.getInstance();
+            for (ToDoItem todo : allTodos) {
+                todoCal.setTimeInMillis(todo.getDate());
+                todoCal.set(Calendar.HOUR_OF_DAY, 0);
+                todoCal.set(Calendar.MINUTE, 0);
+                todoCal.set(Calendar.SECOND, 0);
+                todoCal.set(Calendar.MILLISECOND, 0);
+                
+                if (todoCal.getTimeInMillis() == filterDateKey) {
+                    todosToShow.add(todo);
+                }
+            }
+        } else {
+            // 전체 보기 (완료되지 않은 항목만)
+            todosToShow = dbHelper.getActiveToDos();
+        }
+        
+        todoAdapter.setToDos(todosToShow);
         updateCalendarStatus();
     }
     
     private void updateCalendarStatus() {
-        // 전체 일정 텍스트 제거
-        tvCalendarStatus.setVisibility(View.GONE);
+        if (filteredDate != null) {
+            SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy년 M월 d일", Locale.getDefault());
+            tvCalendarStatus.setText(dateFormat.format(filteredDate.getTime()) + " 일정");
+            tvCalendarStatus.setVisibility(View.VISIBLE);
+        } else {
+            tvCalendarStatus.setVisibility(View.GONE);
+        }
     }
 
     private void showToDoInputDialog(ToDoItem todo) {
@@ -299,29 +422,25 @@ public class ToDoFragment extends Fragment {
         MaterialButton btnSave = dialogView.findViewById(R.id.btn_todo_save);
         MaterialButton btnCancel = dialogView.findViewById(R.id.btn_todo_cancel);
 
-        // 알림 옵션 설정
+        // 알림 옵션 설정 (단순화)
         String[] notificationOptions = {
-            "아침 + 10분전",
-            "아침 + 30분전",
-            "아침 + 1시간전",
-            "아침 + 2시간전",
-            "아침 + 3시간전",
+            "알림없음",
             "10분전",
             "30분전",
             "1시간전",
             "2시간전",
-            "3시간전"
+            "5시간전"
         };
         ArrayAdapter<String> adapter = new ArrayAdapter<>(requireContext(),
                 android.R.layout.simple_dropdown_item_1line, notificationOptions);
         spinnerNotification.setAdapter(adapter);
         spinnerNotification.setThreshold(0); // 첫 글자 입력 없이도 드롭다운 표시
-        spinnerNotification.setText("아침 + 10분전", false); // 기본값
+        spinnerNotification.setText("알림없음", false); // 기본값
 
         // 날짜와 시간 초기화
         final Calendar[] selectedDate = {Calendar.getInstance()};
         final Calendar[] selectedTime = {Calendar.getInstance()};
-        final String[] selectedNotificationType = {"morning_10min"}; // 기본값
+        final String[] selectedNotificationType = {null}; // 기본값: 알림 없음
         
         if (todo != null) {
             editingTodo = todo;
@@ -717,85 +836,34 @@ public class ToDoFragment extends Fragment {
      * 알림 지연 시간 계산 (밀리초)
      */
     private long calculateNotificationDelay(Calendar todoDateTime, String notificationType) {
+        // 알림 없음 선택 시 음수 반환 (알림 예약하지 않음)
+        if (notificationType == null) {
+            return -1;
+        }
+
         Calendar now = Calendar.getInstance();
         Calendar notificationTime = (Calendar) todoDateTime.clone();
 
-        // 알림 타입에 따라 시간 조정
-        if (notificationType.startsWith("morning_")) {
-            // 아침 시간 (8시 50분) 기준
-            // ToDo의 날짜에 8시 50분을 설정
-            Calendar morningTime = (Calendar) todoDateTime.clone();
-            morningTime.set(Calendar.HOUR_OF_DAY, 8);
-            morningTime.set(Calendar.MINUTE, 50);
-            morningTime.set(Calendar.SECOND, 0);
-            morningTime.set(Calendar.MILLISECOND, 0);
-            
-            // 알림 시간만큼 빼기
-            int minutesToSubtract = 0;
-            int hoursToSubtract = 0;
-            
-            if (notificationType.equals("morning_10min")) {
-                minutesToSubtract = 10;
-            } else if (notificationType.equals("morning_30min")) {
-                minutesToSubtract = 30;
-            } else if (notificationType.equals("morning_1hour")) {
-                hoursToSubtract = 1;
-            } else if (notificationType.equals("morning_2hour")) {
-                hoursToSubtract = 2;
-            } else if (notificationType.equals("morning_3hour")) {
-                hoursToSubtract = 3;
-            }
-            
-            morningTime.add(Calendar.HOUR_OF_DAY, -hoursToSubtract);
-            morningTime.add(Calendar.MINUTE, -minutesToSubtract);
-            morningTime.set(Calendar.SECOND, 0);
-            morningTime.set(Calendar.MILLISECOND, 0);
-            
-            // 아침 시간이 이미 지났는지 확인
-            long morningDelay = morningTime.getTimeInMillis() - now.getTimeInMillis();
-            
-            // 아침 시간이 이미 지났고, ToDo 날짜가 오늘이라면 ToDo 시간 기준으로 계산
-            boolean isToday = todoDateTime.get(Calendar.YEAR) == now.get(Calendar.YEAR) &&
-                    todoDateTime.get(Calendar.MONTH) == now.get(Calendar.MONTH) &&
-                    todoDateTime.get(Calendar.DAY_OF_MONTH) == now.get(Calendar.DAY_OF_MONTH);
-            
-            if (morningDelay <= 0 && isToday) {
-                // 아침 시간이 지났고 오늘이면, ToDo 시간 기준으로 알림 설정
-                notificationTime = (Calendar) todoDateTime.clone();
-                notificationTime.set(Calendar.SECOND, 0);
-                notificationTime.set(Calendar.MILLISECOND, 0);
-                
-                // 알림 시간만큼 빼기 (ToDo 시간 기준)
-                notificationTime.add(Calendar.HOUR_OF_DAY, -hoursToSubtract);
-                notificationTime.add(Calendar.MINUTE, -minutesToSubtract);
-                notificationTime.set(Calendar.SECOND, 0);
-                notificationTime.set(Calendar.MILLISECOND, 0);
-            } else {
-                // 아침 시간이 아직 안 지났거나 내일 이후면 아침 시간 사용
-                notificationTime = morningTime;
-            }
-        } else {
-            // ToDo 시간 기준으로 빼기
-            int minutesToSubtract = 0;
-            int hoursToSubtract = 0;
-            
-            if (notificationType.equals("10min")) {
-                minutesToSubtract = 10;
-            } else if (notificationType.equals("30min")) {
-                minutesToSubtract = 30;
-            } else if (notificationType.equals("1hour")) {
-                hoursToSubtract = 1;
-            } else if (notificationType.equals("2hour")) {
-                hoursToSubtract = 2;
-            } else if (notificationType.equals("3hour")) {
-                hoursToSubtract = 3;
-            }
-            
-            notificationTime.add(Calendar.HOUR_OF_DAY, -hoursToSubtract);
-            notificationTime.add(Calendar.MINUTE, -minutesToSubtract);
-            notificationTime.set(Calendar.SECOND, 0);
-            notificationTime.set(Calendar.MILLISECOND, 0);
+        // ToDo 시간 기준으로 빼기
+        int minutesToSubtract = 0;
+        int hoursToSubtract = 0;
+
+        if (notificationType.equals("10min")) {
+            minutesToSubtract = 10;
+        } else if (notificationType.equals("30min")) {
+            minutesToSubtract = 30;
+        } else if (notificationType.equals("1hour")) {
+            hoursToSubtract = 1;
+        } else if (notificationType.equals("2hour")) {
+            hoursToSubtract = 2;
+        } else if (notificationType.equals("5hour")) {
+            hoursToSubtract = 5;
         }
+
+        notificationTime.add(Calendar.HOUR_OF_DAY, -hoursToSubtract);
+        notificationTime.add(Calendar.MINUTE, -minutesToSubtract);
+        notificationTime.set(Calendar.SECOND, 0);
+        notificationTime.set(Calendar.MILLISECOND, 0);
 
         return notificationTime.getTimeInMillis() - now.getTimeInMillis();
     }
@@ -805,20 +873,15 @@ public class ToDoFragment extends Fragment {
      */
     private String getNotificationDisplayText(String notificationType) {
         if (notificationType == null) {
-            return null;
+            return "알림없음";
         }
         switch (notificationType) {
-            case "morning_10min": return "아침 + 10분전";
-            case "morning_30min": return "아침 + 30분전";
-            case "morning_1hour": return "아침 + 1시간전";
-            case "morning_2hour": return "아침 + 2시간전";
-            case "morning_3hour": return "아침 + 3시간전";
             case "10min": return "10분전";
             case "30min": return "30분전";
             case "1hour": return "1시간전";
             case "2hour": return "2시간전";
-            case "3hour": return "3시간전";
-            default: return null;
+            case "5hour": return "5시간전";
+            default: return "알림없음"; // 기존 데이터 호환성
         }
     }
 
@@ -827,17 +890,13 @@ public class ToDoFragment extends Fragment {
      */
     private String getNotificationTypeFromDisplay(String displayText) {
         switch (displayText) {
-            case "아침 + 10분전": return "morning_10min";
-            case "아침 + 30분전": return "morning_30min";
-            case "아침 + 1시간전": return "morning_1hour";
-            case "아침 + 2시간전": return "morning_2hour";
-            case "아침 + 3시간전": return "morning_3hour";
+            case "알림없음": return null;
             case "10분전": return "10min";
             case "30분전": return "30min";
             case "1시간전": return "1hour";
             case "2시간전": return "2hour";
-            case "3시간전": return "3hour";
-            default: return "morning_10min";
+            case "5시간전": return "5hour";
+            default: return null; // 기본값: 알림 없음
         }
     }
 

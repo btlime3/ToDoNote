@@ -8,6 +8,7 @@ public class NoteItem {
     private long updatedAt;
     private long deletedAt;
     private boolean isLocked;
+    private int order;
 
     public NoteItem() {
     }
@@ -73,6 +74,14 @@ public class NoteItem {
 
     public void setLocked(boolean locked) {
         isLocked = locked;
+    }
+
+    public int getOrder() {
+        return order;
+    }
+
+    public void setOrder(int order) {
+        this.order = order;
     }
 }
 

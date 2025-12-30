@@ -1,0 +1,136 @@
+package kr.akotis.todonote.service;
+
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.content.Intent;
+import android.os.Build;
+import android.util.Log;
+
+import androidx.annotation.NonNull;
+import androidx.core.app.NotificationCompat;
+
+import com.google.firebase.messaging.FirebaseMessagingService;
+import com.google.firebase.messaging.RemoteMessage;
+
+import kr.akotis.todonote.R;
+import kr.akotis.todonote.activity.MainActivity;
+import kr.akotis.todonote.database.DatabaseHelper;
+import kr.akotis.todonote.model.MessageItem;
+
+public class MyFirebaseMessagingService extends FirebaseMessagingService {
+
+    private static final String TAG = "FCMService";
+    private static final String CHANNEL_ID = "fcm_notification_channel";
+
+    @Override
+    public void onNewToken(@NonNull String token) {
+        super.onNewToken(token);
+        // 토큰을 서버에 전송하거나 저장하는 로직 (필요시 구현)
+    }
+
+    @Override
+    public void onMessageReceived(@NonNull RemoteMessage remoteMessage) {
+        super.onMessageReceived(remoteMessage);
+
+        // Data payload만 확인 (서버에서 data payload만 보내도록 수정됨)
+        if (remoteMessage.getData().isEmpty()) {
+            return;
+        }
+
+        String title = remoteMessage.getData().get("title");
+        String body = remoteMessage.getData().get("body");
+
+        // title이 없으면 기본값 사용
+        if (title == null || title.trim().isEmpty()) {
+            title = "알림";
+        }
+
+        // 1. DB에 저장 (백그라운드에서도 작동)
+        saveMessageToDatabase(title, body != null ? body : "");
+
+        // 2. 사용자가 볼 수 있게 직접 알림 띄우기 (필수!)
+        showNotificationWithMessage(title, body != null ? body : "");
+    }
+
+    /**
+     * DB에 메시지 저장 (백그라운드에서도 작동)
+     */
+    private void saveMessageToDatabase(String title, String body) {
+        try {
+            DatabaseHelper dbHelper = new DatabaseHelper(getApplicationContext());
+            MessageItem message = new MessageItem(title, body);
+            dbHelper.insertMessage(message);
+            dbHelper.close();
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to save message to database", e);
+        }
+    }
+
+    /**
+     * 사용자가 볼 수 있게 직접 알림 띄우기 (필수!)
+     * data payload만 있는 경우 시스템이 자동으로 알림을 띄우지 않으므로 앱이 직접 띄워야 함
+     */
+    private void showNotificationWithMessage(String title, String body) {
+        // 알림 채널 생성 (Android 8.0 이상)
+        createNotificationChannel();
+
+        // 알림 클릭 시 MainActivity로 이동 (message fragment 열기)
+        Intent intent = new Intent(this, MainActivity.class);
+        intent.putExtra("fragment", "message");
+        intent.putExtra("from_fcm_notification", true);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+
+        // 고유한 requestCode 사용 (시간 기반)
+        int requestCode = (int) System.currentTimeMillis();
+        PendingIntent pendingIntent = PendingIntent.getActivity(
+                this,
+                requestCode,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+
+        // 알림 생성
+        NotificationCompat.Builder notificationBuilder = new NotificationCompat.Builder(this, CHANNEL_ID)
+                .setSmallIcon(R.mipmap.ic_main) // 앱 아이콘 사용
+                .setContentTitle(title != null ? title : "새 알림")
+                .setContentText(body != null ? body : "")
+                .setAutoCancel(true)
+                .setContentIntent(pendingIntent)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setDefaults(NotificationCompat.DEFAULT_ALL);
+
+        // 긴 본문인 경우 BigTextStyle 사용
+        if (body != null && body.length() > 50) {
+            notificationBuilder.setStyle(new NotificationCompat.BigTextStyle().bigText(body));
+        }
+
+        NotificationManager notificationManager =
+                (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+
+        if (notificationManager != null) {
+            // 고유한 알림 ID 사용 (시간 기반)
+            int notificationId = (int) System.currentTimeMillis();
+            notificationManager.notify(notificationId, notificationBuilder.build());
+        }
+    }
+
+    private void createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            CharSequence name = "FCM 알림";
+            String description = "서버에서 전송된 알림";
+            int importance = NotificationManager.IMPORTANCE_HIGH;
+            
+            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, name, importance);
+            channel.setDescription(description);
+            channel.enableLights(true);
+            channel.enableVibration(true);
+            
+            NotificationManager notificationManager = getSystemService(NotificationManager.class);
+            if (notificationManager != null) {
+                notificationManager.createNotificationChannel(channel);
+            }
+        }
+    }
+}
+

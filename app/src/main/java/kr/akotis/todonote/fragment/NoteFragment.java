@@ -14,6 +14,7 @@ import androidx.biometric.BiometricPrompt;
 import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
 import androidx.recyclerview.widget.GridLayoutManager;
+import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.material.button.MaterialButton;
@@ -95,10 +96,40 @@ public class NoteFragment extends Fragment {
                     .commit();
         });
 
+        // 드래그 앤 드롭으로 순서 변경 설정
+        setupDragAndDrop();
+
         // 노트 목록 로드
         loadNotes();
 
         return view;
+    }
+
+    private void setupDragAndDrop() {
+        ItemTouchHelper.SimpleCallback itemTouchHelperCallback = new ItemTouchHelper.SimpleCallback(
+                ItemTouchHelper.UP | ItemTouchHelper.DOWN | ItemTouchHelper.LEFT | ItemTouchHelper.RIGHT,
+                0) {
+            @Override
+            public boolean onMove(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder viewHolder, @NonNull RecyclerView.ViewHolder target) {
+                int fromPosition = viewHolder.getAdapterPosition();
+                int toPosition = target.getAdapterPosition();
+                
+                noteAdapter.moveItem(fromPosition, toPosition);
+                
+                // 순서 변경 후 데이터베이스 업데이트
+                dbHelper.updateNoteOrder(noteAdapter.getNoteList());
+                
+                return true;
+            }
+
+            @Override
+            public void onSwiped(@NonNull RecyclerView.ViewHolder viewHolder, int direction) {
+                // 스와이프 기능 없음
+            }
+        };
+
+        ItemTouchHelper itemTouchHelper = new ItemTouchHelper(itemTouchHelperCallback);
+        itemTouchHelper.attachToRecyclerView(recyclerNote);
     }
 
     private void loadNotes() {
@@ -164,16 +195,24 @@ public class NoteFragment extends Fragment {
         TextInputEditText etPassword = dialogView.findViewById(R.id.et_password);
         MaterialButton btnFingerprint = dialogView.findViewById(R.id.btn_fingerprint);
 
+        // 힌트 표시
+        String hint = dbHelper.getNotePasswordHint();
+        String message = null;
+        if (hint != null && !hint.isEmpty()) {
+            message = "힌트: " + hint;
+        }
+
         // 지문 인증 사용 가능 여부 확인
         BiometricManager biometricManager = BiometricManager.from(requireContext());
         boolean canUseBiometric = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK) == BiometricManager.BIOMETRIC_SUCCESS;
-        
+
         if (!canUseBiometric) {
             btnFingerprint.setVisibility(View.GONE);
         }
 
         androidx.appcompat.app.AlertDialog dialog = new MaterialAlertDialogBuilder(requireContext())
                 .setTitle("잠금 해제")
+                .setMessage(message)
                 .setView(dialogView)
                 .setPositiveButton("확인", (d, which) -> {
                     String password = etPassword.getText() != null ? etPassword.getText().toString() : "";
@@ -181,7 +220,7 @@ public class NoteFragment extends Fragment {
                         Toast.makeText(requireContext(), "암호를 입력해주세요.", Toast.LENGTH_SHORT).show();
                         return;
                     }
-                    
+
                     if (dbHelper.verifyNotePassword(password)) {
                         // 암호가 맞으면 편집 화면으로 이동
                         openNoteEditor(noteId);

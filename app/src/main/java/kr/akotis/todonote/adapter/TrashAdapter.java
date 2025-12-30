@@ -17,6 +17,7 @@ import java.util.Locale;
 
 import kr.akotis.todonote.R;
 import kr.akotis.todonote.model.MemoItem;
+import kr.akotis.todonote.model.MessageItem;
 import kr.akotis.todonote.model.NoteItem;
 
 public class TrashAdapter extends RecyclerView.Adapter<TrashAdapter.TrashViewHolder> {
@@ -24,6 +25,7 @@ public class TrashAdapter extends RecyclerView.Adapter<TrashAdapter.TrashViewHol
     public static class TrashItem {
         public static final int TYPE_MEMO = 0;
         public static final int TYPE_NOTE = 1;
+        public static final int TYPE_MESSAGE = 2;
 
         private int type;
         private long id;
@@ -90,6 +92,10 @@ public class TrashAdapter extends RecyclerView.Adapter<TrashAdapter.TrashViewHol
         return null;
     }
 
+    public List<TrashItem> getTrashItems() {
+        return trashList;
+    }
+
     public void removeTrashItem(int position) {
         if (position >= 0 && position < trashList.size()) {
             trashList.remove(position);
@@ -106,6 +112,8 @@ public class TrashAdapter extends RecyclerView.Adapter<TrashAdapter.TrashViewHol
         private TextView tvMemoContent;
         private TextView tvNoteTitle;
         private TextView tvNoteContent;
+        private TextView tvMessageTitle;
+        private TextView tvMessageBody;
         private FrameLayout layoutLocked;
         private ImageView ivLock;
         private TextView tvDeletedDate;
@@ -116,6 +124,8 @@ public class TrashAdapter extends RecyclerView.Adapter<TrashAdapter.TrashViewHol
             tvMemoContent = itemView.findViewById(R.id.tv_memo_content);
             tvNoteTitle = itemView.findViewById(R.id.tv_note_title);
             tvNoteContent = itemView.findViewById(R.id.tv_note_content);
+            tvMessageTitle = itemView.findViewById(R.id.tv_message_title);
+            tvMessageBody = itemView.findViewById(R.id.tv_message_body);
             layoutLocked = itemView.findViewById(R.id.layout_locked);
             ivLock = itemView.findViewById(R.id.iv_lock);
             tvDeletedDate = itemView.findViewById(R.id.tv_deleted_date);
@@ -161,6 +171,18 @@ public class TrashAdapter extends RecyclerView.Adapter<TrashAdapter.TrashViewHol
                 }
                 
                 tvDeletedDate.setText("삭제된 날짜: " + dateFormat.format(note.getDeletedAt()));
+            } else if (trashItem.getType() == TrashItem.TYPE_MESSAGE) {
+                MessageItem message = (MessageItem) trashItem.getItem();
+                tvItemType.setText("알림");
+                tvMemoContent.setVisibility(View.GONE);
+                tvNoteTitle.setVisibility(View.GONE);
+                tvNoteContent.setVisibility(View.GONE);
+                tvMessageTitle.setVisibility(View.VISIBLE);
+                tvMessageBody.setVisibility(View.VISIBLE);
+                layoutLocked.setVisibility(View.GONE);
+                tvMessageTitle.setText(message.getTitle() != null && !message.getTitle().isEmpty() ? message.getTitle() : "제목 없음");
+                tvMessageBody.setText(message.getBody() != null && !message.getBody().isEmpty() ? message.getBody() : "내용 없음");
+                tvDeletedDate.setText("삭제된 날짜: " + dateFormat.format(message.getDeletedAt()));
             }
         }
     }

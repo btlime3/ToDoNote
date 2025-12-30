@@ -23,6 +23,7 @@ import kr.akotis.todonote.R;
 import kr.akotis.todonote.adapter.TrashAdapter;
 import kr.akotis.todonote.database.DatabaseHelper;
 import kr.akotis.todonote.model.MemoItem;
+import kr.akotis.todonote.model.MessageItem;
 import kr.akotis.todonote.model.NoteItem;
 
 public class TrashFragment extends Fragment {
@@ -46,6 +47,10 @@ public class TrashFragment extends Fragment {
 
         // 스와이프 제스처 설정
         setupSwipeGesture();
+
+        // 휴지통 비우기 버튼 설정
+        com.google.android.material.button.MaterialButton btnEmptyTrash = view.findViewById(R.id.btn_empty_trash);
+        btnEmptyTrash.setOnClickListener(v -> showEmptyTrashConfirmDialog());
 
         // 휴지통 목록 로드
         loadTrash();
@@ -130,7 +135,14 @@ public class TrashFragment extends Fragment {
         // 스와이프 취소를 위해 목록 새로고침
         loadTrash();
         
-        String itemType = trashItem.getType() == TrashAdapter.TrashItem.TYPE_MEMO ? "메모" : "노트";
+        String itemType;
+        if (trashItem.getType() == TrashAdapter.TrashItem.TYPE_MEMO) {
+            itemType = "메모";
+        } else if (trashItem.getType() == TrashAdapter.TrashItem.TYPE_NOTE) {
+            itemType = "노트";
+        } else {
+            itemType = "알림";
+        }
         
         new MaterialAlertDialogBuilder(requireContext())
                 .setTitle("항목 복원")
@@ -151,7 +163,14 @@ public class TrashFragment extends Fragment {
         // 스와이프 취소를 위해 목록 새로고침
         loadTrash();
         
-        String itemType = trashItem.getType() == TrashAdapter.TrashItem.TYPE_MEMO ? "메모" : "노트";
+        String itemType;
+        if (trashItem.getType() == TrashAdapter.TrashItem.TYPE_MEMO) {
+            itemType = "메모";
+        } else if (trashItem.getType() == TrashAdapter.TrashItem.TYPE_NOTE) {
+            itemType = "노트";
+        } else {
+            itemType = "알림";
+        }
         
         new MaterialAlertDialogBuilder(requireContext())
                 .setTitle("영구 삭제")
@@ -178,6 +197,9 @@ public class TrashFragment extends Fragment {
         } else if (trashItem.getType() == TrashAdapter.TrashItem.TYPE_NOTE) {
             result = dbHelper.restoreNote(trashItem.getId());
             itemType = "노트";
+        } else if (trashItem.getType() == TrashAdapter.TrashItem.TYPE_MESSAGE) {
+            result = dbHelper.restoreMessage(trashItem.getId());
+            itemType = "알림";
         }
         
         if (result > 0) {
@@ -191,23 +213,16 @@ public class TrashFragment extends Fragment {
 
     private void permanentlyDeleteItem(TrashAdapter.TrashItem trashItem, int position) {
         int result = 0;
-        String itemType = "";
         
         if (trashItem.getType() == TrashAdapter.TrashItem.TYPE_MEMO) {
             result = dbHelper.permanentlyDeleteMemo(trashItem.getId());
-            itemType = "메모";
         } else if (trashItem.getType() == TrashAdapter.TrashItem.TYPE_NOTE) {
             result = dbHelper.permanentlyDeleteNote(trashItem.getId());
-            itemType = "노트";
+        } else if (trashItem.getType() == TrashAdapter.TrashItem.TYPE_MESSAGE) {
+            result = dbHelper.permanentlyDeleteMessage(trashItem.getId());
         }
         
-        if (result > 0) {
-            Toast.makeText(requireContext(), itemType + "가 영구 삭제되었습니다.", Toast.LENGTH_SHORT).show();
-            loadTrash();
-        } else {
-            Toast.makeText(requireContext(), "삭제에 실패했습니다.", Toast.LENGTH_SHORT).show();
-            loadTrash();
-        }
+        loadTrash();
     }
 
     private void loadTrash() {
@@ -226,6 +241,12 @@ public class TrashFragment extends Fragment {
                 trashItems.add(new TrashAdapter.TrashItem(TrashAdapter.TrashItem.TYPE_NOTE, note.getId(), note));
             }
             
+            // 삭제된 알림 가져오기
+            List<MessageItem> deletedMessages = dbHelper.getDeletedMessages();
+            for (MessageItem message : deletedMessages) {
+                trashItems.add(new TrashAdapter.TrashItem(TrashAdapter.TrashItem.TYPE_MESSAGE, message.getId(), message));
+            }
+            
             // 삭제된 날짜 기준으로 최신 삭제가 위에 오도록 정렬 (내림차순)
             Collections.sort(trashItems, new Comparator<TrashAdapter.TrashItem>() {
                 @Override
@@ -239,6 +260,9 @@ public class TrashFragment extends Fragment {
                     } else if (o1.getType() == TrashAdapter.TrashItem.TYPE_NOTE) {
                         NoteItem note = (NoteItem) o1.getItem();
                         deletedAt1 = note.getDeletedAt();
+                    } else if (o1.getType() == TrashAdapter.TrashItem.TYPE_MESSAGE) {
+                        MessageItem message = (MessageItem) o1.getItem();
+                        deletedAt1 = message.getDeletedAt();
                     }
                     
                     if (o2.getType() == TrashAdapter.TrashItem.TYPE_MEMO) {
@@ -247,6 +271,9 @@ public class TrashFragment extends Fragment {
                     } else if (o2.getType() == TrashAdapter.TrashItem.TYPE_NOTE) {
                         NoteItem note = (NoteItem) o2.getItem();
                         deletedAt2 = note.getDeletedAt();
+                    } else if (o2.getType() == TrashAdapter.TrashItem.TYPE_MESSAGE) {
+                        MessageItem message = (MessageItem) o2.getItem();
+                        deletedAt2 = message.getDeletedAt();
                     }
                     
                     // 내림차순 정렬 (최신 삭제가 위에)
@@ -262,6 +289,38 @@ public class TrashFragment extends Fragment {
     public void onResume() {
         super.onResume();
         loadTrash();
+    }
+
+    private void showEmptyTrashConfirmDialog() {
+        // 휴지통에 항목이 있는지 확인
+        List<TrashAdapter.TrashItem> trashItems = trashAdapter.getTrashItems();
+        if (trashItems == null || trashItems.isEmpty()) {
+            Toast.makeText(requireContext(), "휴지통이 이미 비어있습니다.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        int itemCount = trashItems.size();
+        String message = "휴지통의 모든 항목(" + itemCount + "개)을 영구적으로 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.";
+
+        new MaterialAlertDialogBuilder(requireContext())
+                .setTitle("휴지통 비우기")
+                .setMessage(message)
+                .setPositiveButton("확인", (dialog, which) -> {
+                    emptyTrash();
+                })
+                .setNegativeButton("취소", null)
+                .show();
+    }
+
+    private void emptyTrash() {
+        int deletedCount = dbHelper.emptyTrash();
+        if (deletedCount > 0) {
+            Toast.makeText(requireContext(), "휴지통이 비워졌습니다. (" + deletedCount + "개 항목 삭제)", Toast.LENGTH_SHORT).show();
+            loadTrash();
+        } else {
+            Toast.makeText(requireContext(), "삭제할 항목이 없습니다.", Toast.LENGTH_SHORT).show();
+            loadTrash();
+        }
     }
 
     @Override

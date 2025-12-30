@@ -100,6 +100,14 @@ public class ToDoWidgetService extends RemoteViewsService {
             }
             views.setTextViewText(R.id.widget_todo_title, title);
 
+            // 체크된 항목은 취소선 표시
+            if (todo.isChecked()) {
+                views.setInt(R.id.widget_todo_title, "setPaintFlags",
+                    android.graphics.Paint.STRIKE_THRU_TEXT_FLAG | android.graphics.Paint.ANTI_ALIAS_FLAG);
+            } else {
+                views.setInt(R.id.widget_todo_title, "setPaintFlags", android.graphics.Paint.ANTI_ALIAS_FLAG);
+            }
+
             // 날짜 및 상대 날짜 설정
             String dateText = formatDate(todo.getDate());
             views.setTextViewText(R.id.widget_todo_date, dateText);

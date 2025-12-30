@@ -51,6 +51,15 @@
             android:name="kr.akotis.todonote.widget.ToDoWidgetService"
             android:exported="false"
             android:permission="android.permission.BIND_REMOTEVIEWS" />
+
+        <!-- Firebase Cloud Messaging Service -->
+        <service
+            android:name="kr.akotis.todonote.service.MyFirebaseMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
     </application>
 
 </manifest>

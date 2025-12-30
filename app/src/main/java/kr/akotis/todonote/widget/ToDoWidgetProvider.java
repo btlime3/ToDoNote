@@ -120,11 +120,7 @@ public class ToDoWidgetProvider extends AppWidgetProvider {
                     
                     todo.setChecked(newCheckedState);
                     
-                    // 체크 표시 시 알림 취소
-                    if (newCheckedState && todo.getWorkRequestId() != null) {
-                        cancelNotification(context, todo.getWorkRequestId());
-                        todo.setWorkRequestId(null);
-                    }
+                    // 체크 상태와 알림은 무관 (알림 설정이 되어있다면 계속 작동)
                     
                     int result = dbHelper.updateToDo(todo);
                     dbHelper.close();

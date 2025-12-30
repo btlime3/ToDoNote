@@ -22,7 +22,11 @@
         <item
             android:id="@+id/nav_password"
             android:icon="@android:drawable/ic_lock_lock"
-            android:title="노트 암호 설정" />
+            android:title="암호 설정" />
+        <item
+            android:id="@+id/nav_fcm_token"
+            android:icon="@android:drawable/ic_menu_send"
+            android:title="FCM 토큰 확인" />
         <item
             android:id="@+id/nav_about"
             android:icon="@drawable/ic_info"

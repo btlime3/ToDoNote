@@ -7,6 +7,10 @@
     <color name="color_primary">#A0D9C8</color>
     <color name="color_primary_dark">#7DB8A5</color>
     <color name="color_primary_light">#C8E8DC</color>
+    <color name="color_primary_very_light">#E5F3EF</color>
+    
+    <!-- 링크 색상 -->
+    <color name="link_color">#2196F3</color>
     
     <!-- 보조 컬러 (Secondary) - 연한 살구색 -->
     <color name="color_secondary">#F0D5C9</color>
@@ -33,4 +37,14 @@
     <!-- BottomNavigationView 선택 색상 -->
     <color name="nav_selected">#A0D9C8</color>
     <color name="nav_unselected">#999999</color>
+    
+    <!-- 달력 색상 -->
+    <color name="calendar_sunday">#E53935</color>
+    <color name="calendar_saturday">#1E88E5</color>
+    <color name="calendar_holiday">#E53935</color>
+    <color name="calendar_today_bg">#A0D9C8</color>
+    <color name="calendar_today_text">#FFFFFF</color>
+    <color name="calendar_has_todo">#F0D5C9</color>
+    <color name="calendar_has_todo_bg">#80F0D5C9</color>
+    <color name="calendar_selected">#C8E8DC</color>
 </resources>

@@ -9,9 +9,15 @@ import android.database.sqlite.SQLiteOpenHelper;
 import android.util.Base64;
 
 import javax.crypto.Cipher;
+import javax.crypto.SecretKey;
+import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+import java.security.spec.KeySpec;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -22,12 +28,13 @@ import kr.akotis.todonote.model.ToDoItem;
 public class DatabaseHelper extends SQLiteOpenHelper {
 
     private static final String DATABASE_NAME = "ToDoNote.db";
-    private static final int DATABASE_VERSION = 8;
+    private static final int DATABASE_VERSION = 12;
     
     // 암호 설정 테이블
     private static final String TABLE_PASSWORD = "password_settings";
     private static final String COL_PASSWORD_ID = "id";
     private static final String COL_PASSWORD_HASH = "password_hash";
+    private static final String COL_PASSWORD_HINT = "password_hint";
 
     private Context context;
 
@@ -63,6 +70,16 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     private static final String COL_NOTE_UPDATED_AT = "updated_at";
     private static final String COL_NOTE_DELETED_AT = "deleted_at";
     private static final String COL_NOTE_LOCKED = "locked";
+    private static final String COL_NOTE_ORDER = "note_order";
+
+    // Message 테이블 (FCM 알림)
+    private static final String TABLE_MESSAGE = "message";
+    private static final String COL_MESSAGE_ID = "id";
+    private static final String COL_MESSAGE_TITLE = "title";
+    private static final String COL_MESSAGE_BODY = "body";
+    private static final String COL_MESSAGE_RECEIVED_AT = "received_at";
+    private static final String COL_MESSAGE_IS_READ = "is_read";
+    private static final String COL_MESSAGE_DELETED_AT = "deleted_at";
 
     public DatabaseHelper(Context context) {
         super(context, DATABASE_NAME, null, DATABASE_VERSION);
@@ -118,14 +135,26 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 COL_NOTE_CREATED_AT + " INTEGER, " +
                 COL_NOTE_UPDATED_AT + " INTEGER, " +
                 COL_NOTE_DELETED_AT + " INTEGER, " +
-                COL_NOTE_LOCKED + " INTEGER DEFAULT 0)";
+                COL_NOTE_LOCKED + " INTEGER DEFAULT 0, " +
+                COL_NOTE_ORDER + " INTEGER DEFAULT 0)";
         db.execSQL(createNoteTable);
 
         // 암호 설정 테이블 생성
-        String createPasswordTable = "CREATE TABLE " + TABLE_PASSWORD + " (" +
-                COL_PASSWORD_ID + " INTEGER PRIMARY KEY AUTOINCREMENT, " +
-                COL_PASSWORD_HASH + " TEXT)";
-        db.execSQL(createPasswordTable);
+            String createPasswordTable = "CREATE TABLE " + TABLE_PASSWORD + " (" +
+                    COL_PASSWORD_ID + " INTEGER PRIMARY KEY AUTOINCREMENT, " +
+                    COL_PASSWORD_HASH + " TEXT, " +
+                    COL_PASSWORD_HINT + " TEXT)";
+            db.execSQL(createPasswordTable);
+
+        // Message 테이블 생성 (FCM 알림)
+        String createMessageTable = "CREATE TABLE " + TABLE_MESSAGE + " (" +
+                COL_MESSAGE_ID + " INTEGER PRIMARY KEY AUTOINCREMENT, " +
+                COL_MESSAGE_TITLE + " TEXT, " +
+                COL_MESSAGE_BODY + " TEXT, " +
+                COL_MESSAGE_RECEIVED_AT + " INTEGER, " +
+                COL_MESSAGE_IS_READ + " INTEGER DEFAULT 0, " +
+                COL_MESSAGE_DELETED_AT + " INTEGER)";
+        db.execSQL(createMessageTable);
     }
 
     @Override
@@ -202,6 +231,29 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             // 알림 관련 컬럼 추가
             db.execSQL("ALTER TABLE " + TABLE_TODO + " ADD COLUMN " + COL_TODO_NOTIFICATION_TYPE + " TEXT");
             db.execSQL("ALTER TABLE " + TABLE_TODO + " ADD COLUMN " + COL_TODO_WORK_REQUEST_ID + " TEXT");
+        }
+        if (oldVersion < 9) {
+            // Message 테이블 생성 (FCM 알림)
+            db.execSQL("CREATE TABLE IF NOT EXISTS " + TABLE_MESSAGE + " (" +
+                    COL_MESSAGE_ID + " INTEGER PRIMARY KEY AUTOINCREMENT, " +
+                    COL_MESSAGE_TITLE + " TEXT, " +
+                    COL_MESSAGE_BODY + " TEXT, " +
+                    COL_MESSAGE_RECEIVED_AT + " INTEGER, " +
+                    COL_MESSAGE_IS_READ + " INTEGER DEFAULT 0)");
+        }
+        if (oldVersion < 10) {
+            // Message 테이블에 deleted_at 컬럼 추가
+            db.execSQL("ALTER TABLE " + TABLE_MESSAGE + " ADD COLUMN " + COL_MESSAGE_DELETED_AT + " INTEGER");
+        }
+        if (oldVersion < 11) {
+            // Note 테이블에 order 컬럼 추가
+            db.execSQL("ALTER TABLE " + TABLE_NOTE + " ADD COLUMN " + COL_NOTE_ORDER + " INTEGER DEFAULT 0");
+            // 기존 데이터에 order 값 설정
+            db.execSQL("UPDATE " + TABLE_NOTE + " SET " + COL_NOTE_ORDER + " = " + COL_NOTE_ID);
+        }
+        if (oldVersion < 12) {
+            // 암호 설정 테이블에 힌트 컬럼 추가
+            db.execSQL("ALTER TABLE " + TABLE_PASSWORD + " ADD COLUMN " + COL_PASSWORD_HINT + " TEXT");
         }
     }
 
@@ -520,12 +572,26 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         
         // 이제 DB를 열어서 삽입
         SQLiteDatabase db = this.getWritableDatabase();
+        
+        // 최소 order 값 가져오기
+        Cursor cursor = db.rawQuery("SELECT MIN(" + COL_NOTE_ORDER + ") FROM " + TABLE_NOTE + " WHERE " + COL_NOTE_DELETED_AT + " IS NULL", null);
+        int minOrder = 0;
+        if (cursor.moveToFirst() && !cursor.isNull(0)) {
+            minOrder = cursor.getInt(0);
+        }
+        cursor.close();
+        
+        // 새 노트를 상단에 추가하기 위해 order를 minOrder - 1로 설정
+        // 기존 노트들의 order를 +1 증가
+        db.execSQL("UPDATE " + TABLE_NOTE + " SET " + COL_NOTE_ORDER + " = " + COL_NOTE_ORDER + " + 1 WHERE " + COL_NOTE_DELETED_AT + " IS NULL");
+        
         ContentValues values = new ContentValues();
         values.put(COL_NOTE_TITLE, note.getTitle());
         values.put(COL_NOTE_CONTENT, content);
         values.put(COL_NOTE_CREATED_AT, System.currentTimeMillis());
         values.put(COL_NOTE_UPDATED_AT, System.currentTimeMillis());
         values.put(COL_NOTE_LOCKED, note.isLocked() ? 1 : 0);
+        values.put(COL_NOTE_ORDER, minOrder - 1);
 
         long id = db.insert(TABLE_NOTE, null, values);
         db.close();
@@ -536,7 +602,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         List<NoteItem> noteList = new ArrayList<>();
         SQLiteDatabase db = this.getReadableDatabase();
         String selection = COL_NOTE_DELETED_AT + " IS NULL";
-        Cursor cursor = db.query(TABLE_NOTE, null, selection, null, null, null, COL_NOTE_CREATED_AT + " DESC");
+        Cursor cursor = db.query(TABLE_NOTE, null, selection, null, null, null, COL_NOTE_ORDER + " ASC");
 
         if (cursor.moveToFirst()) {
             do {
@@ -553,6 +619,10 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 int lockedIndex = cursor.getColumnIndex(COL_NOTE_LOCKED);
                 if (lockedIndex >= 0) {
                     note.setLocked(cursor.getInt(lockedIndex) == 1);
+                }
+                int orderIndex = cursor.getColumnIndex(COL_NOTE_ORDER);
+                if (orderIndex >= 0) {
+                    note.setOrder(cursor.getInt(orderIndex));
                 }
                 noteList.add(note);
             } while (cursor.moveToNext());
@@ -643,6 +713,18 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         return result;
     }
 
+    /**
+     * 휴지통의 모든 항목을 영구 삭제
+     * @return 삭제된 항목의 총 개수
+     */
+    public int emptyTrash() {
+        SQLiteDatabase db = this.getWritableDatabase();
+        int deletedMemos = db.delete(TABLE_MEMO, COL_MEMO_DELETED_AT + " IS NOT NULL", null);
+        int deletedNotes = db.delete(TABLE_NOTE, COL_NOTE_DELETED_AT + " IS NOT NULL", null);
+        db.close();
+        return deletedMemos + deletedNotes;
+    }
+
     public NoteItem getNoteById(long id) {
         SQLiteDatabase db = this.getReadableDatabase();
         Cursor cursor = db.query(TABLE_NOTE, null, COL_NOTE_ID + " = ?",
@@ -680,13 +762,23 @@ public class DatabaseHelper extends SQLiteOpenHelper {
      * 암호를 해시하여 데이터베이스에 저장합니다.
      */
     public void setNotePassword(String password) {
+        setNotePassword(password, null);
+    }
+
+    /**
+     * 암호와 힌트를 함께 저장합니다.
+     */
+    public void setNotePassword(String password, String hint) {
         SQLiteDatabase db = this.getWritableDatabase();
         String hash = hashPassword(password);
-        
+
         // 기존 암호가 있으면 업데이트, 없으면 삽입
         ContentValues values = new ContentValues();
         values.put(COL_PASSWORD_HASH, hash);
-        
+        if (hint != null) {
+            values.put(COL_PASSWORD_HINT, hint);
+        }
+
         // 기존 레코드 확인
         Cursor cursor = db.query(TABLE_PASSWORD, null, null, null, null, null, null);
         if (cursor.moveToFirst()) {
@@ -724,6 +816,43 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     }
 
     /**
+     * 저장된 암호 힌트를 반환합니다.
+     */
+    public String getNotePasswordHint() {
+        SQLiteDatabase db = this.getReadableDatabase();
+        Cursor cursor = db.query(TABLE_PASSWORD, new String[]{COL_PASSWORD_HINT}, null, null, null, null, null);
+
+        String hint = null;
+        if (cursor.moveToFirst()) {
+            hint = cursor.getString(cursor.getColumnIndexOrThrow(COL_PASSWORD_HINT));
+        }
+        cursor.close();
+        db.close();
+        return hint;
+    }
+
+    /**
+     * 암호 힌트만 업데이트합니다.
+     */
+    public void setNotePasswordHint(String hint) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        ContentValues values = new ContentValues();
+        values.put(COL_PASSWORD_HINT, hint);
+
+        // 기존 레코드 확인
+        Cursor cursor = db.query(TABLE_PASSWORD, null, null, null, null, null, null);
+        if (cursor.moveToFirst()) {
+            // 기존 레코드가 있으면 업데이트
+            db.update(TABLE_PASSWORD, values, null, null);
+        } else {
+            // 기존 레코드가 없으면 삽입
+            db.insert(TABLE_PASSWORD, null, values);
+        }
+        cursor.close();
+        db.close();
+    }
+
+    /**
      * 입력한 암호가 올바른지 확인합니다.
      */
     public boolean verifyNotePassword(String password) {
@@ -731,8 +860,35 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         if (storedHash == null) {
             return false;
         }
-        String inputHash = hashPassword(password);
-        return storedHash.equals(inputHash);
+
+        try {
+            byte[] storedCombined = Base64.decode(storedHash, Base64.NO_WRAP);
+
+            // 새로운 PBKDF2 포맷 확인 (Salt 16 + PBKDF2 32 = 48바이트)
+            if (storedCombined.length == 48) {
+                // 새로운 PBKDF2 방식
+                byte[] salt = new byte[16];
+                byte[] storedPBKDF2 = new byte[32];
+
+                System.arraycopy(storedCombined, 0, salt, 0, 16);
+                System.arraycopy(storedCombined, 16, storedPBKDF2, 0, 32);
+
+                // 입력 암호로 동일 Salt로 PBKDF2 해시 생성
+                SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
+                KeySpec spec = new PBEKeySpec(password.toCharArray(), salt, 10000, 256);
+                SecretKey key = factory.generateSecret(spec);
+                byte[] inputHash = key.getEncoded();
+
+                return java.util.Arrays.equals(storedPBKDF2, inputHash);
+            } else {
+                // 하위 호환성: 기존 SHA-256 방식
+                String inputHash = hashPassword(password);
+                return storedHash.equals(inputHash);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
     }
 
     /**
@@ -745,33 +901,27 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     }
 
     /**
-     * 암호를 SHA-256으로 해시합니다.
+     * 암호를 PBKDF2로 해시합니다 (Salt 포함).
      */
     private String hashPassword(String password) {
         try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(password.getBytes());
-            return Base64.encodeToString(hash, Base64.NO_WRAP);
-        } catch (NoSuchAlgorithmException e) {
-            e.printStackTrace();
-            return null;
-        }
-    }
+            // Salt 생성 (16바이트)
+            SecureRandom random = new SecureRandom();
+            byte[] salt = new byte[16];
+            random.nextBytes(salt);
 
-    /**
-     * 암호화 키를 생성합니다 (패스워드 해시의 첫 16바이트 사용).
-     */
-    private SecretKeySpec getEncryptionKey() {
-        String passwordHash = getNotePasswordHash();
-        if (passwordHash == null) {
-            return null;
-        }
-        try {
-            // 해시의 첫 16바이트를 키로 사용
-            byte[] hashBytes = Base64.decode(passwordHash, Base64.NO_WRAP);
-            byte[] keyBytes = new byte[16];
-            System.arraycopy(hashBytes, 0, keyBytes, 0, Math.min(16, hashBytes.length));
-            return new SecretKeySpec(keyBytes, "AES");
+            // PBKDF2 해시 생성
+            SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
+            KeySpec spec = new PBEKeySpec(password.toCharArray(), salt, 10000, 256);
+            SecretKey key = factory.generateSecret(spec);
+            byte[] hash = key.getEncoded();
+
+            // Salt(16) + Hash(32) 결합하여 저장
+            byte[] combined = new byte[salt.length + hash.length];
+            System.arraycopy(salt, 0, combined, 0, salt.length);
+            System.arraycopy(hash, 0, combined, salt.length, hash.length);
+
+            return Base64.encodeToString(combined, Base64.NO_WRAP);
         } catch (Exception e) {
             e.printStackTrace();
             return null;
@@ -779,7 +929,49 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     }
 
     /**
-     * 텍스트를 AES로 암호화합니다.
+     * 암호화 키를 생성합니다 (PBKDF2 + Salt 사용).
+     */
+    private SecretKeySpec getEncryptionKey() {
+        String passwordHash = getNotePasswordHash();
+        if (passwordHash == null) {
+            return null;
+        }
+
+        try {
+            byte[] hashBytes = Base64.decode(passwordHash, Base64.NO_WRAP);
+
+            // 새로운 포맷 (Salt 16 + PBKDF2 32 = 48바이트)
+            if (hashBytes.length == 48) {
+                byte[] salt = new byte[16];
+                byte[] pbkdf2Hash = new byte[32];
+                System.arraycopy(hashBytes, 0, salt, 0, 16);
+                System.arraycopy(hashBytes, 16, pbkdf2Hash, 0, 32);
+
+                return deriveAesKey(pbkdf2Hash, salt);
+            } else {
+                // 하위 호환성: 기존 SHA-256 해시 방식
+                byte[] keyBytes = new byte[16];
+                System.arraycopy(hashBytes, 0, keyBytes, 0, Math.min(16, hashBytes.length));
+                return new SecretKeySpec(keyBytes, "AES");
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    /**
+     * PBKDF2를 사용하여 AES 키를 파생합니다.
+     */
+    private SecretKeySpec deriveAesKey(byte[] passwordBytes, byte[] salt) throws Exception {
+        SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
+        KeySpec spec = new PBEKeySpec(new String(passwordBytes, "UTF-8").toCharArray(), salt, 10000, 256);
+        SecretKey tmp = factory.generateSecret(spec);
+        return new SecretKeySpec(tmp.getEncoded(), "AES");
+    }
+
+    /**
+     * 텍스트를 AES/CBC/PKCS5Padding으로 암호화합니다.
      */
     private String encryptContent(String content) {
         if (content == null || content.isEmpty()) {
@@ -790,13 +982,34 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             if (keySpec == null) {
                 return content; // 암호가 설정되지 않았으면 암호화하지 않음
             }
-            Cipher cipher = Cipher.getInstance("AES");
-            cipher.init(Cipher.ENCRYPT_MODE, keySpec);
+
+            // 랜덤 Salt 생성 (16바이트)
+            byte[] salt = new byte[16];
+            SecureRandom random = new SecureRandom();
+            random.nextBytes(salt);
+
+            // PBKDF2로 키 파생
+            SecretKeySpec aesKey = deriveAesKey(content.getBytes("UTF-8"), salt);
+
+            // IV 생성 (16바이트)
+            byte[] iv = new byte[16];
+            random.nextBytes(iv);
+            IvParameterSpec ivSpec = new IvParameterSpec(iv);
+
+            // AES/CBC 암호화
+            Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+            cipher.init(Cipher.ENCRYPT_MODE, aesKey, ivSpec);
             byte[] encrypted = cipher.doFinal(content.getBytes("UTF-8"));
-            return Base64.encodeToString(encrypted, Base64.NO_WRAP);
+
+            // Salt(16) + IV(16) + 암호문 결합
+            byte[] combined = new byte[salt.length + iv.length + encrypted.length];
+            System.arraycopy(salt, 0, combined, 0, salt.length);
+            System.arraycopy(iv, 0, combined, salt.length, iv.length);
+            System.arraycopy(encrypted, 0, combined, salt.length + iv.length, encrypted.length);
+
+            return Base64.encodeToString(combined, Base64.NO_WRAP);
         } catch (Exception e) {
-            e.printStackTrace();
-            return content; // 암호화 실패 시 원본 반환
+            throw new RuntimeException("암호화 실패", e);
         }
     }
 
@@ -812,12 +1025,31 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             if (keySpec == null) {
                 return encryptedContent; // 암호가 설정되지 않았으면 복호화하지 않음
             }
-            Cipher cipher = Cipher.getInstance("AES");
-            cipher.init(Cipher.DECRYPT_MODE, keySpec);
-            byte[] decrypted = cipher.doFinal(Base64.decode(encryptedContent, Base64.NO_WRAP));
+
+            // Base64 디코딩
+            byte[] combined = Base64.decode(encryptedContent, Base64.NO_WRAP);
+
+            // Salt(16) + IV(16) + 암호문 분리
+            byte[] salt = new byte[16];
+            byte[] iv = new byte[16];
+            byte[] encrypted = new byte[combined.length - 32];
+
+            System.arraycopy(combined, 0, salt, 0, 16);
+            System.arraycopy(combined, 16, iv, 0, 16);
+            System.arraycopy(combined, 32, encrypted, 0, encrypted.length);
+
+            // PBKDF2로 키 재생성 (동일 Salt 사용)
+            SecretKeySpec aesKey = deriveAesKey(keySpec.getEncoded(), salt);
+
+            // AES/CBC 복호화
+            Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+            IvParameterSpec ivSpec = new IvParameterSpec(iv);
+            cipher.init(Cipher.DECRYPT_MODE, aesKey, ivSpec);
+            byte[] decrypted = cipher.doFinal(encrypted);
+
             return new String(decrypted, "UTF-8");
         } catch (Exception e) {
-            // 복호화 실패 시 암호화되지 않은 텍스트일 수 있으므로 원본 반환
+            // 복호화 실패 시 원본 반환 (하위 호환성)
             return encryptedContent;
         }
     }
@@ -848,6 +1080,162 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         values.put(COL_NOTE_CONTENT, content);
         
         int result = db.update(TABLE_NOTE, values, COL_NOTE_ID + " = ?", new String[]{String.valueOf(noteId)});
+        db.close();
+        return result;
+    }
+
+    /**
+     * 노트 순서를 업데이트합니다.
+     */
+    public void updateNoteOrder(List<NoteItem> notes) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        db.beginTransaction();
+        try {
+            for (int i = 0; i < notes.size(); i++) {
+                ContentValues values = new ContentValues();
+                values.put(COL_NOTE_ORDER, i);
+                db.update(TABLE_NOTE, values, COL_NOTE_ID + " = ?", new String[]{String.valueOf(notes.get(i).getId())});
+            }
+            db.setTransactionSuccessful();
+        } finally {
+            db.endTransaction();
+            db.close();
+        }
+    }
+
+    // ========== Message CRUD (FCM 알림) ==========
+
+    public long insertMessage(kr.akotis.todonote.model.MessageItem message) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        ContentValues values = new ContentValues();
+        values.put(COL_MESSAGE_TITLE, message.getTitle());
+        values.put(COL_MESSAGE_BODY, message.getBody());
+        values.put(COL_MESSAGE_RECEIVED_AT, message.getReceivedAt());
+        values.put(COL_MESSAGE_IS_READ, message.isRead() ? 1 : 0);
+
+        long id = db.insert(TABLE_MESSAGE, null, values);
+        db.close();
+        return id;
+    }
+
+    public List<kr.akotis.todonote.model.MessageItem> getAllMessages() {
+        List<kr.akotis.todonote.model.MessageItem> messageList = new ArrayList<>();
+        SQLiteDatabase db = this.getReadableDatabase();
+        String selection = COL_MESSAGE_DELETED_AT + " IS NULL";
+        Cursor cursor = db.query(TABLE_MESSAGE, null, selection, null, null, null,
+                COL_MESSAGE_RECEIVED_AT + " DESC");
+
+        if (cursor.moveToFirst()) {
+            do {
+                try {
+                    kr.akotis.todonote.model.MessageItem message = new kr.akotis.todonote.model.MessageItem();
+                    message.setId(cursor.getLong(cursor.getColumnIndexOrThrow(COL_MESSAGE_ID)));
+                    message.setTitle(cursor.getString(cursor.getColumnIndexOrThrow(COL_MESSAGE_TITLE)));
+                    message.setBody(cursor.getString(cursor.getColumnIndexOrThrow(COL_MESSAGE_BODY)));
+                    message.setReceivedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_MESSAGE_RECEIVED_AT)));
+                    message.setRead(cursor.getInt(cursor.getColumnIndexOrThrow(COL_MESSAGE_IS_READ)) == 1);
+                    int deletedAtIndex = cursor.getColumnIndex(COL_MESSAGE_DELETED_AT);
+                    if (deletedAtIndex >= 0 && !cursor.isNull(deletedAtIndex)) {
+                        message.setDeletedAt(cursor.getLong(deletedAtIndex));
+                    }
+                    messageList.add(message);
+                } catch (Exception e) {
+                    android.util.Log.e("DatabaseHelper", "Error loading message", e);
+                }
+            } while (cursor.moveToNext());
+        }
+
+        cursor.close();
+        db.close();
+        return messageList;
+    }
+
+    public int getUnreadMessageCount() {
+        SQLiteDatabase db = this.getReadableDatabase();
+        Cursor cursor = db.rawQuery("SELECT COUNT(*) FROM " + TABLE_MESSAGE + 
+                " WHERE " + COL_MESSAGE_IS_READ + " = 0 AND " + COL_MESSAGE_DELETED_AT + " IS NULL", null);
+        int count = 0;
+        if (cursor.moveToFirst()) {
+            count = cursor.getInt(0);
+        }
+        cursor.close();
+        db.close();
+        return count;
+    }
+
+    public void markMessageAsRead(long id) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        ContentValues values = new ContentValues();
+        values.put(COL_MESSAGE_IS_READ, 1);
+        db.update(TABLE_MESSAGE, values, COL_MESSAGE_ID + " = ?", new String[]{String.valueOf(id)});
+        db.close();
+    }
+
+    public void markAllMessagesAsRead() {
+        SQLiteDatabase db = this.getWritableDatabase();
+        ContentValues values = new ContentValues();
+        values.put(COL_MESSAGE_IS_READ, 1);
+        String whereClause = COL_MESSAGE_DELETED_AT + " IS NULL";
+        db.update(TABLE_MESSAGE, values, whereClause, null);
+        db.close();
+    }
+
+    public int deleteMessage(long id) {
+        // 휴지통으로 이동 (영구 삭제가 아님)
+        SQLiteDatabase db = this.getWritableDatabase();
+        ContentValues values = new ContentValues();
+        values.put(COL_MESSAGE_DELETED_AT, System.currentTimeMillis());
+        int result = db.update(TABLE_MESSAGE, values, COL_MESSAGE_ID + " = ?", new String[]{String.valueOf(id)});
+        db.close();
+        return result;
+    }
+
+    public List<kr.akotis.todonote.model.MessageItem> getDeletedMessages() {
+        List<kr.akotis.todonote.model.MessageItem> messageList = new ArrayList<>();
+        SQLiteDatabase db = this.getReadableDatabase();
+        String selection = COL_MESSAGE_DELETED_AT + " IS NOT NULL";
+        Cursor cursor = db.query(TABLE_MESSAGE, null, selection, null, null, null, 
+                COL_MESSAGE_DELETED_AT + " DESC");
+
+        if (cursor.moveToFirst()) {
+            do {
+                kr.akotis.todonote.model.MessageItem message = new kr.akotis.todonote.model.MessageItem();
+                message.setId(cursor.getLong(cursor.getColumnIndexOrThrow(COL_MESSAGE_ID)));
+                message.setTitle(cursor.getString(cursor.getColumnIndexOrThrow(COL_MESSAGE_TITLE)));
+                message.setBody(cursor.getString(cursor.getColumnIndexOrThrow(COL_MESSAGE_BODY)));
+                message.setReceivedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_MESSAGE_RECEIVED_AT)));
+                message.setRead(cursor.getInt(cursor.getColumnIndexOrThrow(COL_MESSAGE_IS_READ)) == 1);
+                int deletedAtIndex = cursor.getColumnIndex(COL_MESSAGE_DELETED_AT);
+                if (deletedAtIndex >= 0 && !cursor.isNull(deletedAtIndex)) {
+                    message.setDeletedAt(cursor.getLong(deletedAtIndex));
+                }
+                messageList.add(message);
+            } while (cursor.moveToNext());
+        }
+        cursor.close();
+        db.close();
+        return messageList;
+    }
+
+    public int restoreMessage(long id) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        ContentValues values = new ContentValues();
+        values.putNull(COL_MESSAGE_DELETED_AT);
+        int result = db.update(TABLE_MESSAGE, values, COL_MESSAGE_ID + " = ?", new String[]{String.valueOf(id)});
+        db.close();
+        return result;
+    }
+
+    public int permanentlyDeleteMessage(long id) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        int result = db.delete(TABLE_MESSAGE, COL_MESSAGE_ID + " = ?", new String[]{String.valueOf(id)});
+        db.close();
+        return result;
+    }
+
+    public int deleteAllMessages() {
+        SQLiteDatabase db = this.getWritableDatabase();
+        int result = db.delete(TABLE_MESSAGE, null, null);
         db.close();
         return result;
     }
