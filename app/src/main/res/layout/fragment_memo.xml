@@ -43,7 +43,7 @@
         android:visibility="gone"
         app:cardCornerRadius="16dp"
         app:cardElevation="8dp"
-        app:cardBackgroundColor="@color/color_background"
+        app:cardBackgroundColor="@color/white"
         app:strokeWidth="1dp"
         app:strokeColor="@color/color_primary_light"
         app:layout_behavior="@string/hide_bottom_view_on_scroll_behavior">

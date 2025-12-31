@@ -173,7 +173,7 @@
                         android:textColor="@color/color_text_dark"
                         android:textColorHint="@color/color_text_light"
                         android:textCursorDrawable="@drawable/cursor_mint"
-                        android:lineSpacingMultiplier="1.5"
+                        android:lineSpacingMultiplier="1.2"
                         android:background="@android:color/transparent"
                         android:gravity="top|start"
                         android:inputType="textMultiLine"
