@@ -100,6 +100,94 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         return context.getDatabasePath(DATABASE_NAME).getAbsolutePath();
     }
 
+    /**
+     * 외부 DB 파일에서 비밀번호 해시를 읽어옵니다.
+     * @param dbFilePath 읽을 DB 파일 경로
+     * @return 비밀번호 해시 (없으면 null)
+     */
+    public static String getPasswordHashFromFile(String dbFilePath) {
+        SQLiteDatabase db = null;
+        Cursor cursor = null;
+        try {
+            db = SQLiteDatabase.openDatabase(dbFilePath, null, SQLiteDatabase.OPEN_READONLY);
+            cursor = db.query(TABLE_PASSWORD, new String[]{COL_PASSWORD_HASH}, null, null, null, null, null);
+            if (cursor.moveToFirst()) {
+                return cursor.getString(cursor.getColumnIndexOrThrow(COL_PASSWORD_HASH));
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            if (cursor != null) cursor.close();
+            if (db != null) db.close();
+        }
+        return null;
+    }
+
+    /**
+     * 외부 DB 파일에서 비밀번호 힌트를 읽어옵니다.
+     * @param dbFilePath 읽을 DB 파일 경로
+     * @return 비밀번호 힌트 (없으면 null)
+     */
+    public static String getPasswordHintFromFile(String dbFilePath) {
+        SQLiteDatabase db = null;
+        Cursor cursor = null;
+        try {
+            db = SQLiteDatabase.openDatabase(dbFilePath, null, SQLiteDatabase.OPEN_READONLY);
+            cursor = db.query(TABLE_PASSWORD, new String[]{COL_PASSWORD_HINT}, null, null, null, null, null);
+            if (cursor.moveToFirst()) {
+                int hintIndex = cursor.getColumnIndex(COL_PASSWORD_HINT);
+                if (hintIndex >= 0 && !cursor.isNull(hintIndex)) {
+                    return cursor.getString(hintIndex);
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            if (cursor != null) cursor.close();
+            if (db != null) db.close();
+        }
+        return null;
+    }
+
+    /**
+     * 외부 DB 파일의 비밀번호를 검증합니다.
+     * @param dbFilePath DB 파일 경로
+     * @param password 검증할 비밀번호
+     * @return 비밀번호가 맞으면 true
+     */
+    public static boolean verifyPasswordForFile(String dbFilePath, String password) {
+        String storedHash = getPasswordHashFromFile(dbFilePath);
+        if (storedHash == null) {
+            return false;
+        }
+
+        try {
+            byte[] storedCombined = Base64.decode(storedHash, Base64.NO_WRAP);
+
+            // PBKDF2 포맷 확인 (Salt 16 + PBKDF2 32 = 48바이트)
+            if (storedCombined.length == 48) {
+                byte[] salt = new byte[16];
+                byte[] storedPBKDF2 = new byte[32];
+
+                System.arraycopy(storedCombined, 0, salt, 0, 16);
+                System.arraycopy(storedCombined, 16, storedPBKDF2, 0, 32);
+
+                // 입력 암호로 동일 Salt로 PBKDF2 해시 생성
+                SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
+                KeySpec spec = new PBEKeySpec(password.toCharArray(), salt, 10000, 256);
+                SecretKey key = factory.generateSecret(spec);
+                byte[] inputHash = key.getEncoded();
+
+                return java.util.Arrays.equals(storedPBKDF2, inputHash);
+            }
+            // 기타 해시 방식은 현재 지원하지 않음
+            return false;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
     @Override
     public void onCreate(SQLiteDatabase db) {
         // ToDo 테이블 생성
@@ -563,14 +651,10 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     // ========== Note CRUD ==========
 
     public long insertNote(NoteItem note) {
-        // DB를 열기 전에 hasNotePassword()를 먼저 호출
-        boolean needEncryption = note.isLocked() && hasNotePassword();
+        // 노트 내용은 항상 평문으로 저장 (암호화하지 않음)
+        // 잠금 기능은 접근 인증만 담당하며, 암호화는 내보내기 시에만 적용
         String content = note.getContent();
-        if (needEncryption) {
-            content = encryptContent(content);
-        }
         
-        // 이제 DB를 열어서 삽입
         SQLiteDatabase db = this.getWritableDatabase();
         
         // 최소 order 값 가져오기
@@ -633,14 +717,10 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     }
 
     public int updateNote(NoteItem note) {
-        // DB를 열기 전에 hasNotePassword()를 먼저 호출
-        boolean needEncryption = note.isLocked() && hasNotePassword();
+        // 노트 내용은 항상 평문으로 저장 (암호화하지 않음)
+        // 잠금 기능은 접근 인증만 담당하며, 암호화는 내보내기 시에만 적용
         String content = note.getContent();
-        if (needEncryption) {
-            content = encryptContent(content);
-        }
         
-        // 이제 DB를 열어서 업데이트
         SQLiteDatabase db = this.getWritableDatabase();
         ContentValues values = new ContentValues();
         values.put(COL_NOTE_TITLE, note.getTitle());
@@ -736,16 +816,12 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             note.setId(cursor.getLong(cursor.getColumnIndexOrThrow(COL_NOTE_ID)));
             note.setTitle(cursor.getString(cursor.getColumnIndexOrThrow(COL_NOTE_TITLE)));
             
+            // 노트 내용은 항상 평문으로 저장되어 있으므로 복호화 불필요
             String content = cursor.getString(cursor.getColumnIndexOrThrow(COL_NOTE_CONTENT));
             int lockedIndex = cursor.getColumnIndex(COL_NOTE_LOCKED);
             boolean isLocked = lockedIndex >= 0 && cursor.getInt(lockedIndex) == 1;
             
-            // 잠금된 노트는 내용을 복호화 (암호가 설정되어 있고 잠금 상태인 경우)
-            if (isLocked && hasNotePassword()) {
-                content = decryptContent(content);
-            }
             note.setContent(content);
-            
             note.setCreatedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_NOTE_CREATED_AT)));
             note.setUpdatedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_NOTE_UPDATED_AT)));
             note.setLocked(isLocked);
@@ -933,6 +1009,13 @@ public class DatabaseHelper extends SQLiteOpenHelper {
      */
     private SecretKeySpec getEncryptionKey() {
         String passwordHash = getNotePasswordHash();
+        return getEncryptionKey(passwordHash);
+    }
+
+    /**
+     * 암호 해시로부터 암호화 키를 생성합니다 (DB를 열지 않음).
+     */
+    private SecretKeySpec getEncryptionKey(String passwordHash) {
         if (passwordHash == null) {
             return null;
         }
@@ -974,38 +1057,38 @@ public class DatabaseHelper extends SQLiteOpenHelper {
      * 텍스트를 AES/CBC/PKCS5Padding으로 암호화합니다.
      */
     private String encryptContent(String content) {
+        String passwordHash = getNotePasswordHash();
+        return encryptContent(content, passwordHash);
+    }
+
+    /**
+     * 텍스트를 AES/CBC/PKCS5Padding으로 암호화합니다 (암호 해시를 매개변수로 받음).
+     */
+    private String encryptContent(String content, String passwordHash) {
         if (content == null || content.isEmpty()) {
             return content;
         }
         try {
-            SecretKeySpec keySpec = getEncryptionKey();
+            SecretKeySpec keySpec = getEncryptionKey(passwordHash);
             if (keySpec == null) {
                 return content; // 암호가 설정되지 않았으면 암호화하지 않음
             }
 
-            // 랜덤 Salt 생성 (16바이트)
-            byte[] salt = new byte[16];
+            // IV 생성 (16바이트) - 매번 랜덤하게 생성
             SecureRandom random = new SecureRandom();
-            random.nextBytes(salt);
-
-            // PBKDF2로 키 파생
-            SecretKeySpec aesKey = deriveAesKey(content.getBytes("UTF-8"), salt);
-
-            // IV 생성 (16바이트)
             byte[] iv = new byte[16];
             random.nextBytes(iv);
             IvParameterSpec ivSpec = new IvParameterSpec(iv);
 
-            // AES/CBC 암호화
+            // AES/CBC 암호화 - 사용자 패스워드에서 파생된 고정 키 사용
             Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
-            cipher.init(Cipher.ENCRYPT_MODE, aesKey, ivSpec);
+            cipher.init(Cipher.ENCRYPT_MODE, keySpec, ivSpec);
             byte[] encrypted = cipher.doFinal(content.getBytes("UTF-8"));
 
-            // Salt(16) + IV(16) + 암호문 결합
-            byte[] combined = new byte[salt.length + iv.length + encrypted.length];
-            System.arraycopy(salt, 0, combined, 0, salt.length);
-            System.arraycopy(iv, 0, combined, salt.length, iv.length);
-            System.arraycopy(encrypted, 0, combined, salt.length + iv.length, encrypted.length);
+            // IV(16) + 암호문 결합
+            byte[] combined = new byte[iv.length + encrypted.length];
+            System.arraycopy(iv, 0, combined, 0, iv.length);
+            System.arraycopy(encrypted, 0, combined, iv.length, encrypted.length);
 
             return Base64.encodeToString(combined, Base64.NO_WRAP);
         } catch (Exception e) {
@@ -1017,11 +1100,19 @@ public class DatabaseHelper extends SQLiteOpenHelper {
      * 암호화된 텍스트를 복호화합니다.
      */
     private String decryptContent(String encryptedContent) {
+        String passwordHash = getNotePasswordHash();
+        return decryptContent(encryptedContent, passwordHash);
+    }
+
+    /**
+     * 암호화된 텍스트를 복호화합니다 (암호 해시를 매개변수로 받음).
+     */
+    private String decryptContent(String encryptedContent, String passwordHash) {
         if (encryptedContent == null || encryptedContent.isEmpty()) {
             return encryptedContent;
         }
         try {
-            SecretKeySpec keySpec = getEncryptionKey();
+            SecretKeySpec keySpec = getEncryptionKey(passwordHash);
             if (keySpec == null) {
                 return encryptedContent; // 암호가 설정되지 않았으면 복호화하지 않음
             }
@@ -1029,55 +1120,70 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             // Base64 디코딩
             byte[] combined = Base64.decode(encryptedContent, Base64.NO_WRAP);
 
-            // Salt(16) + IV(16) + 암호문 분리
-            byte[] salt = new byte[16];
-            byte[] iv = new byte[16];
-            byte[] encrypted = new byte[combined.length - 32];
+            // 하위 호환성: 기존 형식 (Salt + IV + 암호문) 또는 새로운 형식 (IV + 암호문) 확인
+            byte[] iv;
+            byte[] encrypted;
+            
+            if (combined.length >= 32 && combined.length % 16 == 0) {
+                // 기존 형식 (Salt 16 + IV 16 + 암호문) - 하위 호환성 처리
+                try {
+                    byte[] salt = new byte[16];
+                    iv = new byte[16];
+                    encrypted = new byte[combined.length - 32];
+                    
+                    System.arraycopy(combined, 0, salt, 0, 16);
+                    System.arraycopy(combined, 16, iv, 0, 16);
+                    System.arraycopy(combined, 32, encrypted, 0, encrypted.length);
+                    
+                    // 기존 방식으로 복호화 시도 (하위 호환성)
+                    // 하지만 키는 고정 키를 사용
+                    Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+                    IvParameterSpec ivSpec = new IvParameterSpec(iv);
+                    cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec);
+                    byte[] decrypted = cipher.doFinal(encrypted);
+                    return new String(decrypted, "UTF-8");
+                } catch (Exception e) {
+                    // 기존 형식으로 복호화 실패 시 새로운 형식으로 시도
+                }
+            }
+            
+            // 새로운 형식 (IV 16 + 암호문)
+            if (combined.length < 16) {
+                return encryptedContent; // 너무 짧은 데이터
+            }
+            
+            iv = new byte[16];
+            encrypted = new byte[combined.length - 16];
+            
+            System.arraycopy(combined, 0, iv, 0, 16);
+            System.arraycopy(combined, 16, encrypted, 0, encrypted.length);
 
-            System.arraycopy(combined, 0, salt, 0, 16);
-            System.arraycopy(combined, 16, iv, 0, 16);
-            System.arraycopy(combined, 32, encrypted, 0, encrypted.length);
-
-            // PBKDF2로 키 재생성 (동일 Salt 사용)
-            SecretKeySpec aesKey = deriveAesKey(keySpec.getEncoded(), salt);
-
-            // AES/CBC 복호화
+            // AES/CBC 복호화 - 암호화 시와 동일한 고정 키 사용
             Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
             IvParameterSpec ivSpec = new IvParameterSpec(iv);
-            cipher.init(Cipher.DECRYPT_MODE, aesKey, ivSpec);
+            cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec);
             byte[] decrypted = cipher.doFinal(encrypted);
 
             return new String(decrypted, "UTF-8");
         } catch (Exception e) {
             // 복호화 실패 시 원본 반환 (하위 호환성)
+            android.util.Log.e("DatabaseHelper", "복호화 실패", e);
             return encryptedContent;
         }
     }
 
     /**
      * 노트를 잠금/잠금해제합니다.
+     * 잠금 기능은 접근 인증만 담당하며, 내용 암호화/복호화는 수행하지 않습니다.
+     * 암호화는 내보내기 시에만, 복호화는 가져오기 시에만 적용됩니다.
      */
     public int toggleNoteLock(long noteId, boolean lock) {
-        // getNoteById()를 먼저 호출 (내부에서 DB를 열고 닫음)
-        NoteItem note = getNoteById(noteId);
-        if (note == null) {
-            return 0;
-        }
-        
-        // 잠금 상태 변경 시 내용 암호화/복호화 처리
-        String content = note.getContent();
-        if (lock && hasNotePassword()) {
-            // 잠금: 내용 암호화
-            content = encryptContent(content);
-        }
-        // 잠금 해제: 이미 getNoteById에서 복호화되어 있으므로 그대로 저장
-        
-        // 이제 DB를 열어서 업데이트
         SQLiteDatabase db = this.getWritableDatabase();
+        
+        // DB 업데이트 - 잠금 상태만 변경, 내용은 그대로 유지
         ContentValues values = new ContentValues();
         values.put(COL_NOTE_LOCKED, lock ? 1 : 0);
         values.put(COL_NOTE_UPDATED_AT, System.currentTimeMillis());
-        values.put(COL_NOTE_CONTENT, content);
         
         int result = db.update(TABLE_NOTE, values, COL_NOTE_ID + " = ?", new String[]{String.valueOf(noteId)});
         db.close();

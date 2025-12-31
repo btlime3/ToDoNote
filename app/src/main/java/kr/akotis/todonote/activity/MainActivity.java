@@ -94,7 +94,10 @@ public class MainActivity extends AppCompatActivity {
     private static final String KEY_APP_LOCK_ENABLED = "app_lock_enabled";
     private static final String KEY_FIRST_BIOMETRIC_AUTH = "first_biometric_auth";
     private static final String KEY_BACKUP_RESTORED = "backup_restored";
+    private static final String KEY_TESTER_MODE_ENABLED = "tester_mode_enabled";
     private boolean isAppUnlocked = false;
+    private int notificationTapCount = 0;
+    private static final int TESTER_MODE_TAP_COUNT = 20;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -114,6 +117,9 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         dbHelper = new DatabaseHelper(this);
+        
+        // 테스터 모드 터치 영역 설정
+        setupTesterModeTouchArea();
         
         setupToolbar();
         setupDrawer();
@@ -438,6 +444,12 @@ public class MainActivity extends AppCompatActivity {
     public boolean onCreateOptionsMenu(Menu menu) {
         getMenuInflater().inflate(R.menu.toolbar_menu, menu);
         notificationMenuItem = menu.findItem(R.id.action_notifications);
+        
+        // 테스터 모드가 아니면 알림 메뉴 아이템 숨기기
+        if (!isTesterModeEnabled()) {
+            notificationMenuItem.setVisible(false);
+        }
+        
         updateNotificationBadge();
         return true;
     }
@@ -455,10 +467,75 @@ public class MainActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         updateNotificationBadge();
+        updateFcmTokenMenuVisibility();
+    }
+    
+    private boolean isTesterModeEnabled() {
+        android.content.SharedPreferences prefs = getSharedPreferences(PREF_APP_LOCK, MODE_PRIVATE);
+        return prefs.getBoolean(KEY_TESTER_MODE_ENABLED, false);
+    }
+    
+    private void enableTesterMode() {
+        android.content.SharedPreferences prefs = getSharedPreferences(PREF_APP_LOCK, MODE_PRIVATE);
+        prefs.edit().putBoolean(KEY_TESTER_MODE_ENABLED, true).apply();
+        
+        Toast.makeText(this, "테스터용 알리미 기능 활성화", Toast.LENGTH_LONG).show();
+        
+        // 알림 메뉴 아이템 표시
+        if (notificationMenuItem != null) {
+            notificationMenuItem.setVisible(true);
+        }
+        
+        // FCM 토큰 메뉴 표시
+        updateFcmTokenMenuVisibility();
+    }
+    
+    private void updateFcmTokenMenuVisibility() {
+        NavigationView navigationView = findViewById(R.id.nav_view);
+        if (navigationView != null) {
+            Menu navMenu = navigationView.getMenu();
+            MenuItem fcmMenuItem = navMenu.findItem(R.id.nav_fcm_token);
+            if (fcmMenuItem != null) {
+                fcmMenuItem.setVisible(isTesterModeEnabled());
+            }
+        }
+    }
+    
+    private void setupTesterModeTouchArea() {
+        View touchArea = findViewById(R.id.tester_mode_touch_area);
+        if (touchArea != null) {
+            // 테스터 모드가 활성화되어 있으면 터치 영역 숨기기
+            if (isTesterModeEnabled()) {
+                touchArea.setVisibility(View.GONE);
+            } else {
+                touchArea.setOnClickListener(v -> handleNotificationAreaTap());
+            }
+        }
+    }
+    
+    private void handleNotificationAreaTap() {
+        notificationTapCount++;
+        if (notificationTapCount >= TESTER_MODE_TAP_COUNT) {
+            if (!isTesterModeEnabled()) {
+                enableTesterMode();
+                // 터치 영역 숨기기
+                View touchArea = findViewById(R.id.tester_mode_touch_area);
+                if (touchArea != null) {
+                    touchArea.setVisibility(View.GONE);
+                }
+            }
+            notificationTapCount = 0;
+        }
     }
     
     private void updateNotificationBadge() {
         if (notificationMenuItem != null && dbHelper != null) {
+            // 테스터 모드가 아니면 아이콘 숨기기
+            if (!isTesterModeEnabled()) {
+                notificationMenuItem.setVisible(false);
+                return;
+            }
+            
             int unreadCount = dbHelper.getUnreadMessageCount();
             
             // ActionView가 없으면 생성
@@ -816,68 +893,174 @@ public class MainActivity extends AppCompatActivity {
 
     /**
      * 선택한 파일로 데이터베이스를 교체합니다.
+     * 가져올 DB에 비밀번호가 설정되어 있으면 인증 후 진행합니다.
      */
     private void importDatabase(Uri uri) {
+        try {
+            // 임시 파일에 선택한 DB 복사 (비밀번호 확인용)
+            File tempDir = getCacheDir();
+            File tempDbFile = new File(tempDir, "temp_import_db_" + System.currentTimeMillis() + ".db");
+            
+            try (InputStream in = getContentResolver().openInputStream(uri);
+                 OutputStream out = new FileOutputStream(tempDbFile)) {
+                if (in == null) {
+                    Toast.makeText(this, "파일을 읽을 수 없습니다.", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                byte[] buffer = new byte[4096];
+                int bytesRead;
+                while ((bytesRead = in.read(buffer)) != -1) {
+                    out.write(buffer, 0, bytesRead);
+                }
+            }
+
+            // 가져올 DB에서 비밀번호 해시 확인
+            String passwordHash = DatabaseHelper.getPasswordHashFromFile(tempDbFile.getAbsolutePath());
+            
+            if (passwordHash != null) {
+                // 비밀번호가 설정된 DB: 인증 필요
+                showImportPasswordDialog(tempDbFile, uri);
+            } else {
+                // 비밀번호가 없는 DB: 바로 진행
+                showImportConfirmDialog(tempDbFile, uri);
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+            Toast.makeText(this, "파일을 읽는 중 오류가 발생했습니다: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /**
+     * 가져오기 비밀번호 인증 다이얼로그를 표시합니다.
+     */
+    private void showImportPasswordDialog(File tempDbFile, Uri originalUri) {
+        View dialogView = getLayoutInflater().inflate(R.layout.dialog_password, null);
+        TextInputLayout passwordLayout = dialogView.findViewById(R.id.password_layout);
+        TextInputEditText etPassword = dialogView.findViewById(R.id.et_password);
+        MaterialButton btnFingerprint = dialogView.findViewById(R.id.btn_fingerprint);
+
+        passwordLayout.setHint("백업 파일 암호");
+        
+        // 지문 인증 버튼 숨김 (기기 종속적이므로 다른 기기에서 사용 불가)
+        btnFingerprint.setVisibility(View.GONE);
+
+        // 힌트 표시
+        String hint = DatabaseHelper.getPasswordHintFromFile(tempDbFile.getAbsolutePath());
+        String message = "다른 기기에서 내보낸 백업 파일입니다.\n해당 백업의 암호를 입력해주세요.";
+        if (hint != null && !hint.isEmpty()) {
+            message += "\n\n힌트: " + hint;
+        }
+
+        androidx.appcompat.app.AlertDialog dialog = new MaterialAlertDialogBuilder(this)
+                .setTitle("백업 파일 인증")
+                .setMessage(message)
+                .setView(dialogView)
+                .setCancelable(false)
+                .setPositiveButton("확인", null) // 후에 설정
+                .setNegativeButton("취소", (d, which) -> {
+                    // 임시 파일 삭제
+                    tempDbFile.delete();
+                })
+                .create();
+
+        dialog.setOnShowListener(dialogInterface -> {
+            dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+                String password = etPassword.getText() != null ? etPassword.getText().toString() : "";
+                
+                if (password.isEmpty()) {
+                    Toast.makeText(this, "암호를 입력해주세요.", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                
+                // 비밀번호 검증
+                if (DatabaseHelper.verifyPasswordForFile(tempDbFile.getAbsolutePath(), password)) {
+                    dialog.dismiss();
+                    // 인증 성공: 가져오기 확인 다이얼로그 표시
+                    showImportConfirmDialog(tempDbFile, originalUri);
+                } else {
+                    Toast.makeText(this, "암호가 올바르지 않습니다.", Toast.LENGTH_SHORT).show();
+                }
+            });
+        });
+
+        dialog.show();
+    }
+
+    /**
+     * 가져오기 확인 다이얼로그를 표시하고 실제 교체를 수행합니다.
+     */
+    private void showImportConfirmDialog(File tempDbFile, Uri originalUri) {
         new MaterialAlertDialogBuilder(this)
                 .setTitle("데이터베이스 가져오기")
                 .setMessage("현재 데이터베이스를 선택한 파일로 교체하시겠습니까? 현재 데이터는 백업 후 교체됩니다.")
                 .setPositiveButton("가져오기", (dialog, which) -> {
-                    try {
-                        // 현재 DB 백업
-                        String dbPath = DatabaseHelper.getDatabasePath(this);
-                        File dbFile = new File(dbPath);
-                        File backupFile = new File(dbPath + ".backup_" + System.currentTimeMillis());
-                        
-                        if (dbFile.exists()) {
-                            try (InputStream in = new FileInputStream(dbFile);
-                                 OutputStream out = new FileOutputStream(backupFile)) {
-                                byte[] buffer = new byte[4096];
-                                int bytesRead;
-                                while ((bytesRead = in.read(buffer)) != -1) {
-                                    out.write(buffer, 0, bytesRead);
-                                }
-                            }
-                        }
-
-                        // 선택한 파일을 현재 DB로 복사
-                        try (InputStream in = getContentResolver().openInputStream(uri);
-                             OutputStream out = new FileOutputStream(dbFile)) {
-                            if (in != null && out != null) {
-                                byte[] buffer = new byte[4096];
-                                int bytesRead;
-                                while ((bytesRead = in.read(buffer)) != -1) {
-                                    out.write(buffer, 0, bytesRead);
-                                }
-                                
-                                // 백업 복원 플래그 설정 (보안을 위해 지문 인증 비활성화)
-                                android.content.SharedPreferences prefs = getSharedPreferences(PREF_APP_LOCK, MODE_PRIVATE);
-                                prefs.edit()
-                                    .putBoolean(KEY_BACKUP_RESTORED, true)
-                                    .putBoolean(KEY_FIRST_BIOMETRIC_AUTH, false)
-                                    .apply();
-
-                                Toast.makeText(this, "데이터베이스가 성공적으로 가져와졌습니다. 앱을 재시작합니다.", Toast.LENGTH_LONG).show();
-
-                                // 앱 재시작
-                                new android.os.Handler().postDelayed(() -> {
-                                    Intent intent = getPackageManager().getLaunchIntentForPackage(getPackageName());
-                                    if (intent != null) {
-                                        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
-                                        startActivity(intent);
-                                        finish();
-                                    }
-                                }, 1000);
-                            } else {
-                                Toast.makeText(this, "파일을 읽을 수 없습니다.", Toast.LENGTH_SHORT).show();
-                            }
-                        }
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                        Toast.makeText(this, "가져오기 중 오류가 발생했습니다: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-                    }
+                    performDatabaseImport(tempDbFile);
                 })
-                .setNegativeButton("취소", null)
+                .setNegativeButton("취소", (dialog, which) -> {
+                    // 임시 파일 삭제
+                    tempDbFile.delete();
+                })
                 .show();
+    }
+
+    /**
+     * 실제 데이터베이스 교체를 수행합니다.
+     */
+    private void performDatabaseImport(File tempDbFile) {
+        try {
+            // 현재 DB 백업
+            String dbPath = DatabaseHelper.getDatabasePath(this);
+            File dbFile = new File(dbPath);
+            File backupFile = new File(dbPath + ".backup_" + System.currentTimeMillis());
+            
+            if (dbFile.exists()) {
+                try (InputStream in = new FileInputStream(dbFile);
+                     OutputStream out = new FileOutputStream(backupFile)) {
+                    byte[] buffer = new byte[4096];
+                    int bytesRead;
+                    while ((bytesRead = in.read(buffer)) != -1) {
+                        out.write(buffer, 0, bytesRead);
+                    }
+                }
+            }
+
+            // 임시 파일을 현재 DB로 복사
+            try (InputStream in = new FileInputStream(tempDbFile);
+                 OutputStream out = new FileOutputStream(dbFile)) {
+                byte[] buffer = new byte[4096];
+                int bytesRead;
+                while ((bytesRead = in.read(buffer)) != -1) {
+                    out.write(buffer, 0, bytesRead);
+                }
+                
+                // 임시 파일 삭제
+                tempDbFile.delete();
+                
+                // 백업 복원 플래그 설정 (보안을 위해 지문 인증 비활성화)
+                android.content.SharedPreferences prefs = getSharedPreferences(PREF_APP_LOCK, MODE_PRIVATE);
+                prefs.edit()
+                    .putBoolean(KEY_BACKUP_RESTORED, true)
+                    .putBoolean(KEY_FIRST_BIOMETRIC_AUTH, true)  // 다시 지문 등록 필요
+                    .apply();
+
+                Toast.makeText(this, "데이터베이스가 성공적으로 가져와졌습니다. 앱을 재시작합니다.", Toast.LENGTH_LONG).show();
+
+                // 앱 재시작
+                new android.os.Handler().postDelayed(() -> {
+                    Intent intent = getPackageManager().getLaunchIntentForPackage(getPackageName());
+                    if (intent != null) {
+                        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
+                        startActivity(intent);
+                        finish();
+                    }
+                }, 1000);
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+            // 임시 파일 삭제
+            tempDbFile.delete();
+            Toast.makeText(this, "가져오기 중 오류가 발생했습니다: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void showPasswordSettingsDialog() {

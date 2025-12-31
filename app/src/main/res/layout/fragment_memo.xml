@@ -37,40 +37,44 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
-        android:layout_margin="8dp"
+        android:layout_marginStart="12dp"
+        android:layout_marginEnd="12dp"
+        android:layout_marginBottom="12dp"
         android:visibility="gone"
-        app:cardCornerRadius="12dp"
-        app:cardElevation="12dp"
-        app:cardBackgroundColor="@color/white"
+        app:cardCornerRadius="16dp"
+        app:cardElevation="8dp"
+        app:cardBackgroundColor="@color/color_background"
+        app:strokeWidth="1dp"
+        app:strokeColor="@color/color_primary_light"
         app:layout_behavior="@string/hide_bottom_view_on_scroll_behavior">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:paddingStart="12dp"
-        android:paddingEnd="12dp"
-        android:paddingTop="15dp"
-        android:paddingBottom="8dp"
+        android:paddingStart="14dp"
+        android:paddingEnd="10dp"
+        android:paddingTop="14dp"
+        android:paddingBottom="10dp"
         android:gravity="center_vertical">
 
         <ImageButton
             android:id="@+id/btn_memo_cancel"
-            android:layout_width="24dp"
-            android:layout_height="24dp"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
             android:src="@drawable/ic_close"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="취소"
-            android:padding="2dp"
-            android:tint="?attr/colorOnSurfaceVariant"
+            android:padding="4dp"
+            android:tint="@color/color_text_light"
             android:scaleType="fitCenter" />
 
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:layout_marginStart="4.5dp"
-            android:layout_marginEnd="4.5dp"
+            android:layout_marginStart="8dp"
+            android:layout_marginEnd="8dp"
             android:orientation="vertical">
 
             <com.google.android.material.textfield.TextInputLayout
@@ -81,7 +85,7 @@
                 app:boxStrokeWidth="0dp"
                 app:boxStrokeWidthFocused="0dp"
                 app:hintEnabled="false"
-                app:boxBackgroundColor="@color/white">
+                app:boxBackgroundColor="@android:color/transparent">
 
                 <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/et_memo_input"
@@ -92,30 +96,37 @@
                     android:minLines="1"
                     android:gravity="top|start"
                     android:scrollbars="vertical"
-                    android:hint="메모 입력"
-                    android:background="@color/white"
+                    android:hint="메모 입력..."
+                    android:textColorHint="@color/color_text_light"
+                    android:background="@android:color/transparent"
+                    android:textCursorDrawable="@drawable/cursor_mint"
                     android:paddingStart="0dp"
                     android:paddingEnd="0dp"
-                    android:paddingTop="0dp"
-                    android:paddingBottom="0dp" />
+                    android:paddingTop="4dp"
+                    android:paddingBottom="8dp" />
 
             </com.google.android.material.textfield.TextInputLayout>
 
             <View
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
-                android:background="?attr/colorOutline" />
+                android:background="@color/color_primary_light" />
 
         </LinearLayout>
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btn_memo_save"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_height="36dp"
             android:text="저장"
+            android:textSize="13sp"
             android:minWidth="0dp"
             android:paddingStart="16dp"
-            android:paddingEnd="16dp" />
+            android:paddingEnd="16dp"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            app:cornerRadius="18dp"
+            app:backgroundTint="@color/color_primary" />
 
     </LinearLayout>
 

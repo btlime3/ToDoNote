@@ -9,6 +9,7 @@ import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.LinearLayout;
 import android.widget.GridLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -416,8 +417,10 @@ public class ToDoFragment extends Fragment {
 
         TextInputEditText etTitle = dialogView.findViewById(R.id.et_todo_title);
         TextInputEditText etDetail = dialogView.findViewById(R.id.et_todo_detail);
-        MaterialButton btnDate = dialogView.findViewById(R.id.btn_todo_date);
-        MaterialButton btnTime = dialogView.findViewById(R.id.btn_todo_time);
+        LinearLayout btnDate = dialogView.findViewById(R.id.btn_todo_date);
+        LinearLayout btnTime = dialogView.findViewById(R.id.btn_todo_time);
+        TextView tvDate = dialogView.findViewById(R.id.tv_todo_date);
+        TextView tvTime = dialogView.findViewById(R.id.tv_todo_time);
         AutoCompleteTextView spinnerNotification = dialogView.findViewById(R.id.spinner_notification);
         MaterialButton btnSave = dialogView.findViewById(R.id.btn_todo_save);
         MaterialButton btnCancel = dialogView.findViewById(R.id.btn_todo_cancel);
@@ -478,8 +481,8 @@ public class ToDoFragment extends Fragment {
             }
         });
         
-        updateDateButton(btnDate, selectedDate[0]);
-        updateTimeButton(btnTime, selectedTime[0]);
+        updateDateText(tvDate, selectedDate[0]);
+        updateTimeText(tvTime, selectedTime[0]);
 
         // 날짜 선택
         btnDate.setOnClickListener(v -> {
@@ -491,7 +494,7 @@ public class ToDoFragment extends Fragment {
                     (view, year, month, dayOfMonth) -> {
                         // 선택한 날짜로 설정 (요일 유지)
                         selectedDate[0].set(year, month, dayOfMonth);
-                        updateDateButton(btnDate, selectedDate[0]);
+                        updateDateText(tvDate, selectedDate[0]);
                     },
                     dateForPicker.get(Calendar.YEAR),
                     dateForPicker.get(Calendar.MONTH),
@@ -507,7 +510,7 @@ public class ToDoFragment extends Fragment {
                     (view, hourOfDay, minute) -> {
                         selectedTime[0].set(Calendar.HOUR_OF_DAY, hourOfDay);
                         selectedTime[0].set(Calendar.MINUTE, minute);
-                        updateTimeButton(btnTime, selectedTime[0]);
+                        updateTimeText(tvTime, selectedTime[0]);
                     },
                     selectedTime[0].get(Calendar.HOUR_OF_DAY),
                     selectedTime[0].get(Calendar.MINUTE),
@@ -588,14 +591,14 @@ public class ToDoFragment extends Fragment {
         dialog.show();
     }
 
-    private void updateDateButton(MaterialButton button, Calendar calendar) {
+    private void updateDateText(TextView textView, Calendar calendar) {
         SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy년 MM월 dd일", Locale.getDefault());
-        button.setText(dateFormat.format(calendar.getTime()));
+        textView.setText(dateFormat.format(calendar.getTime()));
     }
 
-    private void updateTimeButton(MaterialButton button, Calendar calendar) {
+    private void updateTimeText(TextView textView, Calendar calendar) {
         SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm", Locale.getDefault());
-        button.setText(timeFormat.format(calendar.getTime()));
+        textView.setText(timeFormat.format(calendar.getTime()));
     }
 
     private void setupSwipeGesture() {

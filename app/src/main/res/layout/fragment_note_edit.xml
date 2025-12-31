@@ -1,116 +1,191 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/color_background"
-    android:paddingTop="16dp"
-    android:paddingBottom="16dp">
+    android:fitsSystemWindows="true">
 
-    <!-- 버튼 컨테이너 -->
-    <LinearLayout
-        android:id="@+id/button_container"
-        android:layout_width="0dp"
+    <!-- 상단 앱바 -->
+    <com.google.android.material.appbar.AppBarLayout
+        android:id="@+id/app_bar"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:padding="16dp"
-        android:gravity="end"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent">
+        android:background="@android:color/transparent"
+        app:elevation="0dp">
 
-        <!-- 취소 버튼 -->
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btn_cancel"
-            android:layout_width="wrap_content"
+        <!-- 버튼 바 -->
+        <LinearLayout
+            android:id="@+id/button_container"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginEnd="8dp"
-            android:text="취소"
-            style="@style/Widget.MaterialComponents.Button.TextButton" />
+            android:orientation="horizontal"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp"
+            android:gravity="center_vertical"
+            android:background="@color/color_background">
 
-        <!-- 삭제 버튼 (편집 모드일 때만 표시) -->
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btn_delete"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginEnd="8dp"
-            android:text="삭제"
-            android:visibility="gone"
-            app:backgroundTint="@android:color/holo_red_dark" />
+            <!-- 닫기 버튼 (아이콘) -->
+            <ImageButton
+                android:id="@+id/btn_cancel"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:src="@drawable/ic_close"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="닫기"
+                android:scaleType="center"
+                android:tint="@color/color_text_dark" />
 
-        <!-- 잠금 버튼 (편집 모드일 때만 표시) -->
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btn_lock"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginEnd="8dp"
-            android:text="잠금"
-            android:visibility="gone"
-            app:backgroundTint="#FFC107"
-            app:strokeWidth="0dp" />
+            <View
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_weight="1" />
 
-        <!-- 저장 버튼 -->
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btn_save"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="저장" />
+            <!-- 삭제 버튼 (편집 모드일 때만 표시) -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_delete"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:layout_marginEnd="6dp"
+                android:text="삭제"
+                android:textSize="13sp"
+                android:visibility="gone"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:minHeight="0dp"
+                app:cornerRadius="18dp"
+                app:backgroundTint="#FFEBEE"
+                android:textColor="#D32F2F"
+                app:strokeColor="#FFCDD2"
+                app:strokeWidth="1dp"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
 
-    </LinearLayout>
+            <!-- 잠금 버튼 (편집 모드일 때만 표시) -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_lock"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:layout_marginEnd="6dp"
+                android:text="잠금"
+                android:textSize="13sp"
+                android:visibility="gone"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:minHeight="0dp"
+                app:cornerRadius="18dp"
+                app:backgroundTint="@color/color_accent_light"
+                android:textColor="@color/color_text_dark"
+                app:strokeColor="@color/color_accent"
+                app:strokeWidth="1dp"
+                app:icon="@android:drawable/ic_lock_lock"
+                app:iconSize="16dp"
+                app:iconTint="@color/color_text_dark"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
 
+            <!-- 저장 버튼 -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_save"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:text="저장"
+                android:textSize="13sp"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:minHeight="0dp"
+                app:cornerRadius="18dp"
+                app:backgroundTint="@color/color_primary" />
+
+        </LinearLayout>
+
+    </com.google.android.material.appbar.AppBarLayout>
+
+    <!-- 컨텐츠 영역 -->
     <androidx.core.widget.NestedScrollView
         android:id="@+id/scroll_view"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        app:layout_constraintBottom_toTopOf="@id/button_container"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent">
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:fillViewport="true"
+        app:layout_behavior="@string/appbar_scrolling_view_behavior">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:padding="20dp">
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:paddingTop="16dp"
+            android:paddingBottom="32dp">
 
-            <!-- 노트 제목 -->
-            <com.google.android.material.textfield.TextInputLayout
-                android:id="@+id/title_layout"
+            <!-- 제목 입력 - 심플 스타일 -->
+            <EditText
+                android:id="@+id/et_note_title"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:hint="제목"
-                android:layout_marginBottom="16dp"
-                app:boxBackgroundMode="outline">
+                android:textSize="22sp"
+                android:textStyle="bold"
+                android:textColor="@color/color_text_dark"
+                android:textColorHint="@color/color_text_light"
+                android:background="@android:color/transparent"
+                android:inputType="text"
+                android:maxLines="2"
+                android:paddingTop="8dp"
+                android:paddingBottom="16dp" />
 
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/et_note_title"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:inputType="text"
-                    android:maxLines="1" />
-            </com.google.android.material.textfield.TextInputLayout>
+            <!-- 구분선 -->
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="@color/color_primary_light"
+                android:layout_marginBottom="16dp" />
 
-            <!-- 노트 내용 -->
-            <com.google.android.material.textfield.TextInputLayout
-                android:id="@+id/content_layout"
+            <!-- 본문 카드 -->
+            <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:hint="내용"
-                app:boxBackgroundMode="outline">
+                app:cardCornerRadius="12dp"
+                app:cardElevation="0dp"
+                app:cardBackgroundColor="@color/white"
+                app:strokeWidth="1dp"
+                app:strokeColor="@color/color_primary_light">
 
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/et_note_content"
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:gravity="top|start"
-                    android:inputType="textMultiLine"
-                    android:minLines="12"
-                    android:scrollbars="vertical" />
-            </com.google.android.material.textfield.TextInputLayout>
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <!-- 내용 입력 -->
+                    <EditText
+                        android:id="@+id/et_note_content"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:hint="내용을 입력하세요..."
+                        android:textSize="16sp"
+                        android:textColor="@color/color_text_dark"
+                        android:textColorHint="@color/color_text_light"
+                        android:textCursorDrawable="@drawable/cursor_mint"
+                        android:lineSpacingMultiplier="1.5"
+                        android:background="@android:color/transparent"
+                        android:gravity="top|start"
+                        android:inputType="textMultiLine"
+                        android:minLines="12"
+                        android:scrollbars="vertical" />
+
+                </LinearLayout>
+
+            </com.google.android.material.card.MaterialCardView>
 
         </LinearLayout>
 
     </androidx.core.widget.NestedScrollView>
 
-</androidx.constraintlayout.widget.ConstraintLayout>
-
+</androidx.coordinatorlayout.widget.CoordinatorLayout>

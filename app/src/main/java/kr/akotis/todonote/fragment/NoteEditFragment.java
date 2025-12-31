@@ -4,6 +4,8 @@ import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.EditText;
+import android.widget.ImageButton;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
@@ -11,7 +13,6 @@ import androidx.fragment.app.Fragment;
 
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
-import com.google.android.material.textfield.TextInputEditText;
 
 import kr.akotis.todonote.R;
 import kr.akotis.todonote.database.DatabaseHelper;
@@ -19,10 +20,10 @@ import kr.akotis.todonote.model.NoteItem;
 
 public class NoteEditFragment extends Fragment {
 
-    private TextInputEditText etTitle;
-    private TextInputEditText etContent;
+    private EditText etTitle;
+    private EditText etContent;
     private MaterialButton btnSave;
-    private MaterialButton btnCancel;
+    private ImageButton btnCancel;
     private MaterialButton btnDelete;
     private MaterialButton btnLock;
     private DatabaseHelper dbHelper;
@@ -120,6 +121,21 @@ public class NoteEditFragment extends Fragment {
             return;
         }
 
+        // 잠금 상태 변경 전에 현재 편집 중인 내용을 먼저 저장
+        String title = etTitle.getText() != null ? etTitle.getText().toString().trim() : "";
+        String content = etContent.getText() != null ? etContent.getText().toString().trim() : "";
+        
+        editingNote.setTitle(title);
+        editingNote.setContent(content);
+        
+        // 현재 내용을 먼저 저장 (노트 내용은 항상 평문으로 저장)
+        int saveResult = dbHelper.updateNote(editingNote);
+        if (saveResult <= 0) {
+            Toast.makeText(requireContext(), "내용 저장에 실패했습니다.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        // 잠금 상태만 변경 (암호화 없이 접근 인증만 담당)
         boolean newLockState = !editingNote.isLocked();
         int result = dbHelper.toggleNoteLock(noteId, newLockState);
         if (result > 0) {
@@ -172,7 +188,7 @@ public class NoteEditFragment extends Fragment {
     private void showDeleteConfirmDialog() {
         new MaterialAlertDialogBuilder(requireContext())
                 .setTitle("노트 삭제")
-                .setMessage("이 노트를 영구적으로 삭제하시겠습니까?")
+                .setMessage("이 노트를 삭제하시겠습니까?")
                 .setPositiveButton("삭제", (dialog, which) -> {
                     deleteNote();
                 })

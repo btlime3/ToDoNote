@@ -22,15 +22,29 @@
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent">
 
-            <androidx.appcompat.widget.Toolbar
-                android:id="@+id/toolbar"
+            <FrameLayout
                 android:layout_width="match_parent"
-                android:layout_height="?attr/actionBarSize"
-                android:background="@color/color_primary"
-                app:title="ToDoNote"
-                app:titleTextColor="@color/color_text_dark"
-                app:navigationIcon="@drawable/ic_menu"
-                app:navigationIconTint="@color/color_text_dark" />
+                android:layout_height="wrap_content">
+
+                <androidx.appcompat.widget.Toolbar
+                    android:id="@+id/toolbar"
+                    android:layout_width="match_parent"
+                    android:layout_height="?attr/actionBarSize"
+                    android:background="@color/color_primary"
+                    app:title="ToDoNote"
+                    app:titleTextColor="@color/color_text_dark"
+                    app:navigationIcon="@drawable/ic_menu"
+                    app:navigationIconTint="@color/color_text_dark" />
+
+                <!-- 투명 터치 영역 (우측 상단, 테스터 모드 활성화용) -->
+                <View
+                    android:id="@+id/tester_mode_touch_area"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:layout_gravity="end|center_vertical"
+                    android:background="?attr/selectableItemBackgroundBorderless" />
+
+            </FrameLayout>
 
         </com.google.android.material.appbar.AppBarLayout>
 

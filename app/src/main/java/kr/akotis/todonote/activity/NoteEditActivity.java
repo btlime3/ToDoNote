@@ -108,7 +108,7 @@ public class NoteEditActivity extends AppCompatActivity {
     private void showDeleteConfirmDialog() {
         new MaterialAlertDialogBuilder(this)
                 .setTitle("노트 삭제")
-                .setMessage("이 노트를 영구적으로 삭제하시겠습니까?")
+                .setMessage("이 노트를 삭제하시겠습니까?")
                 .setPositiveButton("삭제", (dialog, which) -> {
                     deleteNote();
                 })

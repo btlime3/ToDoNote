@@ -6,12 +6,15 @@
     android:orientation="vertical"
     android:layout_margin="4dp">
 
-    <!-- 내용 영역 (CardView로 감싸진 하얀색 박스) -->
-    <androidx.cardview.widget.CardView
+    <!-- 내용 영역 (MaterialCardView로 테두리 추가) -->
+    <com.google.android.material.card.MaterialCardView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        app:cardCornerRadius="8dp"
-        app:cardElevation="2dp">
+        app:cardCornerRadius="10dp"
+        app:cardElevation="1dp"
+        app:cardBackgroundColor="@color/color_surface"
+        app:strokeWidth="1dp"
+        app:strokeColor="@color/color_primary_light">
 
         <FrameLayout
             android:layout_width="match_parent"
@@ -43,7 +46,7 @@
 
         </FrameLayout>
 
-    </androidx.cardview.widget.CardView>
+    </com.google.android.material.card.MaterialCardView>
 
     <!-- 노트 제목 (CardView 밖, 별도로 분리, 배경 없음) -->
     <TextView
