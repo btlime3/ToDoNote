@@ -1,6 +1,7 @@
 package kr.akotis.todonote.activity;
 
 import android.app.AlertDialog;
+import android.content.ComponentName;
 import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Intent;
@@ -65,6 +66,7 @@ import java.util.List;
 import java.util.Locale;
 
 import kr.akotis.todonote.R;
+import kr.akotis.todonote.database.DamagedDatabaseKeeper;
 import kr.akotis.todonote.database.DatabaseHelper;
 import kr.akotis.todonote.fragment.CompletedToDoFragment;
 import kr.akotis.todonote.fragment.MemoFragment;
@@ -104,6 +106,8 @@ public class MainActivity extends AppCompatActivity {
     private boolean isAppUnlocked = false;
     private int notificationTapCount = 0;
     private static final int TESTER_MODE_TAP_COUNT = 20;
+    private static final String TEMP_IMPORT_PREFIX = "temp_import_db_";
+    private static final String IMPORTING_SUFFIX = ".importing";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -123,6 +127,7 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         dbHelper = new DatabaseHelper(this);
+        cleanUpLeftoverImportFiles();
 
         getSupportFragmentManager().registerFragmentLifecycleCallbacks(
                 new FragmentManager.FragmentLifecycleCallbacks() {
@@ -150,6 +155,8 @@ public class MainActivity extends AppCompatActivity {
         
         // 알림 채널 미리 생성 (앱이 꺼진 상태에서도 알림이 작동하도록)
         createNotificationChannel();
+
+        notifyIfDatabaseWasDamaged();
         
         // 앱 잠금 확인
         if (isAppLockEnabled() && dbHelper.hasNotePassword() && !isAppUnlocked) {
@@ -874,67 +881,57 @@ public class MainActivity extends AppCompatActivity {
     private void exportDatabase() {
         File snapshot = null;
         try {
-            String dbPath = DatabaseHelper.getDatabasePath(this);
-            File dbFile = new File(dbPath);
-            
-            if (!dbFile.exists()) {
-                Toast.makeText(this, "데이터베이스 파일을 찾을 수 없습니다.", Toast.LENGTH_SHORT).show();
-                return;
-            }
-
             snapshot = dbHelper.createCompactBackup(getCacheDir());
-
-            // 파일명에 타임스탬프 추가
-            SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault());
-            String timestamp = sdf.format(new Date());
-            String fileName = "ToDoNote_backup_" + timestamp + ".db";
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                // Android 10+ (API 29+): MediaStore 사용
-                ContentResolver resolver = getContentResolver();
-                ContentValues contentValues = new ContentValues();
-                contentValues.put(MediaStore.Downloads.DISPLAY_NAME, fileName);
-                contentValues.put(MediaStore.Downloads.MIME_TYPE, "application/x-sqlite3");
-                contentValues.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
-
-                Uri uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues);
-                if (uri != null) {
-                    try (InputStream in = new FileInputStream(snapshot);
-                         OutputStream out = resolver.openOutputStream(uri)) {
-                        if (out != null) {
-                            byte[] buffer = new byte[4096];
-                            int bytesRead;
-                            while ((bytesRead = in.read(buffer)) != -1) {
-                                out.write(buffer, 0, bytesRead);
-                            }
-                            Toast.makeText(this, "다운로드 폴더에 백업이 저장되었습니다: " + fileName, Toast.LENGTH_LONG).show();
-                        }
-                    }
-                } else {
-                    Toast.makeText(this, "백업 저장에 실패했습니다.", Toast.LENGTH_SHORT).show();
-                }
-            } else {
-                // Android 9 이하: 직접 파일 복사
-                File downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
-                File backupFile = new File(downloadsDir, fileName);
-                
-                try (InputStream in = new FileInputStream(snapshot);
-                     OutputStream out = new FileOutputStream(backupFile)) {
-                    byte[] buffer = new byte[4096];
-                    int bytesRead;
-                    while ((bytesRead = in.read(buffer)) != -1) {
-                        out.write(buffer, 0, bytesRead);
-                    }
-                    Toast.makeText(this, "다운로드 폴더에 백업이 저장되었습니다: " + fileName, Toast.LENGTH_LONG).show();
-                }
-            }
+            String fileName = "ToDoNote_backup_" + fileTimestamp() + ".db";
+            saveToDownloads(snapshot, fileName);
+            Toast.makeText(this, "다운로드 폴더에 백업이 저장되었습니다: " + fileName, Toast.LENGTH_LONG).show();
         } catch (IOException | android.database.sqlite.SQLiteException e) {
-            e.printStackTrace();
+            android.util.Log.e("MainActivity", "Export failed", e);
             Toast.makeText(this, "백업 중 오류가 발생했습니다: " + e.getMessage(), Toast.LENGTH_SHORT).show();
         } finally {
             if (snapshot != null) {
                 snapshot.delete();
             }
+        }
+    }
+
+    private static String fileTimestamp() {
+        return new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
+    }
+
+    /** 쓰기가 끝날 때까지 파일을 숨겨 두어, 실패해도 잘린 파일이 백업처럼 남지 않게 한다. */
+    private void saveToDownloads(File source, String fileName) throws IOException {
+        ContentResolver resolver = getContentResolver();
+        ContentValues values = new ContentValues();
+        values.put(MediaStore.Downloads.DISPLAY_NAME, fileName);
+        values.put(MediaStore.Downloads.MIME_TYPE, "application/x-sqlite3");
+        values.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
+        values.put(MediaStore.Downloads.IS_PENDING, 1);
+
+        Uri uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+        if (uri == null) {
+            throw new IOException("다운로드 폴더에 파일을 만들 수 없습니다.");
+        }
+        try (InputStream in = new FileInputStream(source);
+             OutputStream out = resolver.openOutputStream(uri)) {
+            if (out == null) {
+                throw new IOException("다운로드 폴더의 파일을 열 수 없습니다.");
+            }
+            copyStream(in, out);
+        } catch (IOException | RuntimeException e) {
+            resolver.delete(uri, null, null);
+            throw e;
+        }
+        ContentValues finished = new ContentValues();
+        finished.put(MediaStore.Downloads.IS_PENDING, 0);
+        resolver.update(uri, finished, null, null);
+    }
+
+    private static void copyStream(InputStream in, OutputStream out) throws IOException {
+        byte[] buffer = new byte[8192];
+        int bytesRead;
+        while ((bytesRead = in.read(buffer)) != -1) {
+            out.write(buffer, 0, bytesRead);
         }
     }
 
@@ -950,61 +947,66 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * 선택한 파일로 데이터베이스를 교체합니다.
-     * 가져올 DB에 비밀번호가 설정되어 있으면 인증 후 진행합니다.
+     * 선택한 파일을 임시 사본으로 옮겨 검사한 뒤, 필요하면 암호를 확인하고 교체 여부를 묻습니다.
      */
     private void importDatabase(Uri uri) {
-        try {
-            // 임시 파일에 선택한 DB 복사 (비밀번호 확인용)
-            File tempDir = getCacheDir();
-            File tempDbFile = new File(tempDir, "temp_import_db_" + System.currentTimeMillis() + ".db");
-            
-            try (InputStream in = getContentResolver().openInputStream(uri);
-                 OutputStream out = new FileOutputStream(tempDbFile)) {
-                if (in == null) {
-                    Toast.makeText(this, "파일을 읽을 수 없습니다.", Toast.LENGTH_SHORT).show();
-                    return;
-                }
-                byte[] buffer = new byte[4096];
-                int bytesRead;
-                while ((bytesRead = in.read(buffer)) != -1) {
-                    out.write(buffer, 0, bytesRead);
-                }
+        File tempDbFile = new File(getCacheDir(), TEMP_IMPORT_PREFIX + System.currentTimeMillis() + ".db");
+        try (InputStream in = getContentResolver().openInputStream(uri);
+             OutputStream out = new FileOutputStream(tempDbFile)) {
+            if (in == null) {
+                throw new IOException("파일을 열 수 없습니다.");
             }
-
-            // 가져올 DB에서 비밀번호 해시 확인
-            String passwordHash = DatabaseHelper.getPasswordHashFromFile(tempDbFile.getAbsolutePath());
-            
-            if (passwordHash != null) {
-                // 비밀번호가 설정된 DB: 인증 필요
-                showImportPasswordDialog(tempDbFile, uri);
-            } else {
-                // 비밀번호가 없는 DB: 바로 진행
-                showImportConfirmDialog(tempDbFile, uri);
-            }
+            copyStream(in, out);
         } catch (IOException e) {
-            e.printStackTrace();
+            tempDbFile.delete();
             Toast.makeText(this, "파일을 읽는 중 오류가 발생했습니다: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        DatabaseHelper.ImportCheck check = DatabaseHelper.checkImportFile(tempDbFile);
+        if (check != DatabaseHelper.ImportCheck.OK) {
+            tempDbFile.delete();
+            Toast.makeText(this, importCheckMessage(check), Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        if (DatabaseHelper.getPasswordHashFromFile(tempDbFile.getAbsolutePath()) != null) {
+            // 비밀번호가 설정된 DB: 인증 필요
+            showImportPasswordDialog(tempDbFile);
+        } else {
+            // 비밀번호가 없는 DB: 바로 진행
+            showImportConfirmDialog(tempDbFile);
+        }
+    }
+
+    private static String importCheckMessage(DatabaseHelper.ImportCheck check) {
+        switch (check) {
+            case TOO_NEW:
+                return "더 새로운 버전의 앱에서 만든 백업입니다. 앱을 업데이트한 뒤 가져와주세요.";
+            case DAMAGED:
+                return "손상된 백업 파일이라 가져올 수 없습니다. 현재 데이터는 그대로입니다.";
+            default:
+                return "ToDoNote 백업 파일이 아닙니다. 현재 데이터는 그대로입니다.";
         }
     }
 
     /**
      * 가져오기 비밀번호 인증 다이얼로그를 표시합니다.
      */
-    private void showImportPasswordDialog(File tempDbFile, Uri originalUri) {
+    private void showImportPasswordDialog(File tempDbFile) {
         View dialogView = getLayoutInflater().inflate(R.layout.dialog_password, null);
         TextInputLayout passwordLayout = dialogView.findViewById(R.id.password_layout);
         TextInputEditText etPassword = dialogView.findViewById(R.id.et_password);
         MaterialButton btnFingerprint = dialogView.findViewById(R.id.btn_fingerprint);
 
         passwordLayout.setHint("백업 파일 암호");
-        
+
         // 지문 인증 버튼 숨김 (기기 종속적이므로 다른 기기에서 사용 불가)
         btnFingerprint.setVisibility(View.GONE);
 
         // 힌트 표시
         String hint = DatabaseHelper.getPasswordHintFromFile(tempDbFile.getAbsolutePath());
-        String message = "다른 기기에서 내보낸 백업 파일입니다.\n해당 백업의 암호를 입력해주세요.";
+        String message = "백업 파일을 만들 때 설정한 암호를 입력해주세요.";
         if (hint != null && !hint.isEmpty()) {
             message += "\n\n힌트: " + hint;
         }
@@ -1024,17 +1026,17 @@ public class MainActivity extends AppCompatActivity {
         dialog.setOnShowListener(dialogInterface -> {
             dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
                 String password = etPassword.getText() != null ? etPassword.getText().toString() : "";
-                
+
                 if (password.isEmpty()) {
                     Toast.makeText(this, "암호를 입력해주세요.", Toast.LENGTH_SHORT).show();
                     return;
                 }
-                
+
                 // 비밀번호 검증
                 if (DatabaseHelper.verifyPasswordForFile(tempDbFile.getAbsolutePath(), password)) {
                     dialog.dismiss();
                     // 인증 성공: 가져오기 확인 다이얼로그 표시
-                    showImportConfirmDialog(tempDbFile, originalUri);
+                    showImportConfirmDialog(tempDbFile);
                 } else {
                     Toast.makeText(this, "암호가 올바르지 않습니다.", Toast.LENGTH_SHORT).show();
                 }
@@ -1047,79 +1049,117 @@ public class MainActivity extends AppCompatActivity {
     /**
      * 가져오기 확인 다이얼로그를 표시하고 실제 교체를 수행합니다.
      */
-    private void showImportConfirmDialog(File tempDbFile, Uri originalUri) {
+    private void showImportConfirmDialog(File tempDbFile) {
         new MaterialAlertDialogBuilder(this)
                 .setTitle("데이터베이스 가져오기")
-                .setMessage("현재 데이터베이스를 선택한 파일로 교체하시겠습니까? 현재 데이터는 백업 후 교체됩니다.")
-                .setPositiveButton("가져오기", (dialog, which) -> {
-                    performDatabaseImport(tempDbFile);
-                })
-                .setNegativeButton("취소", (dialog, which) -> {
-                    // 임시 파일 삭제
-                    tempDbFile.delete();
-                })
+                .setMessage("현재 데이터를 선택한 파일로 교체하시겠습니까?\n\n"
+                        + "교체 전 데이터는 다운로드 폴더에 ToDoNote_before_import 파일로 저장되며, "
+                        + "이 파일을 다시 가져오면 되돌릴 수 있습니다.")
+                .setPositiveButton("가져오기", (dialog, which) -> performDatabaseImport(tempDbFile))
+                .setNegativeButton("취소", (dialog, which) -> tempDbFile.delete())
+                .setOnCancelListener(dialog -> tempDbFile.delete())
                 .show();
     }
 
     /**
      * 실제 데이터베이스 교체를 수행합니다.
+     * 완성된 새 파일을 같은 폴더에 만든 뒤 한 번에 바꾸므로, 중간에 실패해도 현재 데이터는 그대로입니다.
      */
     private void performDatabaseImport(File tempDbFile) {
+        File dbFile = new File(DatabaseHelper.getDatabasePath(this));
+        File replacement = new File(dbFile.getPath() + IMPORTING_SUFFIX);
+        File snapshot = null;
         try {
             DatabaseHelper.prepareImportedDatabase(tempDbFile);
-            // 현재 DB 백업
-            String dbPath = DatabaseHelper.getDatabasePath(this);
-            File dbFile = new File(dbPath);
-            File backupFile = new File(getNoBackupFilesDir(), "ToDoNote_before_import.db");
-            
+
+            // 사용자가 직접 되돌릴 수 있도록 현재 데이터를 먼저 저장한다. 실패하면 교체하지 않는다.
             if (dbFile.exists()) {
-                // 복원 전 안전 사본은 최신 1개만 유지해 반복 복원 시 누적을 막는다.
-                File recoverySnapshot = dbHelper.createCompactBackup(getNoBackupFilesDir());
-                try {
-                    java.nio.file.Files.move(recoverySnapshot.toPath(), backupFile.toPath(),
-                            java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-                } finally {
-                    recoverySnapshot.delete();
-                }
+                snapshot = dbHelper.createCompactBackup(getCacheDir());
+                saveToDownloads(snapshot, "ToDoNote_before_import_" + fileTimestamp() + ".db");
             }
 
-            // 임시 파일을 현재 DB로 복사
             try (InputStream in = new FileInputStream(tempDbFile);
-                 OutputStream out = new FileOutputStream(dbFile)) {
-                byte[] buffer = new byte[4096];
-                int bytesRead;
-                while ((bytesRead = in.read(buffer)) != -1) {
-                    out.write(buffer, 0, bytesRead);
-                }
-                
-                // 임시 파일 삭제
-                tempDbFile.delete();
-                
-                // 백업 복원 플래그 설정 (보안을 위해 지문 인증 비활성화)
-                android.content.SharedPreferences prefs = getSharedPreferences(PREF_APP_LOCK, MODE_PRIVATE);
-                prefs.edit()
+                 FileOutputStream out = new FileOutputStream(replacement)) {
+                copyStream(in, out);
+                out.flush();
+                out.getFD().sync();
+            }
+
+            // 열린 연결과 옛 WAL 파일이 남으면 새 파일에 옛 내용이 섞여 손상될 수 있다.
+            dbHelper.close();
+            for (String suffix : new String[]{"-wal", "-shm", "-journal"}) {
+                new File(dbFile.getPath() + suffix).delete();
+            }
+            java.nio.file.Files.move(replacement.toPath(), dbFile.toPath(),
+                    java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+
+            // 이전 버전이 남긴 앱 내부 사본은 이제 쓰이지 않는다.
+            new File(getNoBackupFilesDir(), "ToDoNote_before_import.db").delete();
+
+            // 백업 복원 플래그 설정 (보안을 위해 지문 인증 비활성화)
+            getSharedPreferences(PREF_APP_LOCK, MODE_PRIVATE).edit()
                     .putBoolean(KEY_BACKUP_RESTORED, true)
                     .putBoolean(KEY_FIRST_BIOMETRIC_AUTH, true)  // 다시 지문 등록 필요
-                    .apply();
+                    .commit();
 
-                Toast.makeText(this, "데이터베이스가 성공적으로 가져와졌습니다. 앱을 재시작합니다.", Toast.LENGTH_LONG).show();
-
-                // 앱 재시작
-                new android.os.Handler().postDelayed(() -> {
-                    Intent intent = getPackageManager().getLaunchIntentForPackage(getPackageName());
-                    if (intent != null) {
-                        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
-                        startActivity(intent);
-                        finish();
-                    }
-                }, 1000);
-            }
-        } catch (IOException | android.database.sqlite.SQLiteException e) {
-            e.printStackTrace();
-            // 임시 파일 삭제
+            Toast.makeText(this, "데이터베이스를 가져왔습니다. 앱을 재시작합니다.", Toast.LENGTH_LONG).show();
+            restartAppAfterImport();
+        } catch (IOException | RuntimeException e) {
+            android.util.Log.e("MainActivity", "Import failed", e);
+            replacement.delete();
+            Toast.makeText(this, "가져오기 중 오류가 발생했습니다: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        } finally {
             tempDbFile.delete();
-            Toast.makeText(this, "가져오기 중 오류가 발생했습니다: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            if (snapshot != null) {
+                snapshot.delete();
+            }
         }
+    }
+
+    /** 프로세스를 새로 시작해 이전 파일을 가리키는 연결이나 화면이 남지 않게 한다. */
+    private void restartAppAfterImport() {
+        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+            startActivity(Intent.makeRestartActivityTask(new ComponentName(this, MainActivity.class)));
+            Runtime.getRuntime().exit(0);
+        }, 1000);
+    }
+
+    /** 가져오기가 중간에 끝나 남은 임시 파일을 지운다. 이 파일에는 노트 내용이 평문으로 들어 있다. */
+    private void cleanUpLeftoverImportFiles() {
+        File[] leftovers = getCacheDir().listFiles((dir, name) ->
+                name.startsWith(TEMP_IMPORT_PREFIX) || name.startsWith("todonote_backup_"));
+        if (leftovers != null) {
+            for (File leftover : leftovers) {
+                leftover.delete();
+            }
+        }
+        new File(DatabaseHelper.getDatabasePath(this) + IMPORTING_SUFFIX).delete();
+    }
+
+    /** 손상으로 데이터베이스가 다시 만들어졌다면 사용자가 찾을 수 있는 곳에 사본을 두고 알린다. */
+    private void notifyIfDatabaseWasDamaged() {
+        List<File> copies = DamagedDatabaseKeeper.pendingCopies(this);
+        if (copies.isEmpty()) {
+            return;
+        }
+        String message;
+        try {
+            for (File copy : copies) {
+                saveToDownloads(copy, copy.getName());
+            }
+            message = "손상된 파일 사본을 다운로드 폴더에 저장했습니다: " + copies.get(0).getName();
+        } catch (IOException | RuntimeException e) {
+            android.util.Log.e("MainActivity", "Could not export damaged copy", e);
+            message = "손상된 파일 사본은 앱 내부에 보관되어 있습니다.";
+        }
+        DamagedDatabaseKeeper.markNotified(this);
+        new MaterialAlertDialogBuilder(this)
+                .setTitle("데이터 손상 감지")
+                .setMessage("저장된 데이터에서 손상이 발견되어 새 데이터베이스로 시작했습니다.\n\n" + message
+                        + "\n\n최근 백업이 있다면 메뉴의 '가져오기'로 복원할 수 있습니다.")
+                .setPositiveButton("확인", null)
+                .show();
     }
 
     private void showPasswordSettingsDialog() {
@@ -1329,16 +1369,7 @@ public class MainActivity extends AppCompatActivity {
                             .setTitle("암호 제거")
                             .setMessage("암호를 제거하시겠습니까?\n\n• 모든 잠금된 노트는 잠금 해제됩니다.\n• 앱 실행 시 잠금도 해제됩니다.")
                             .setPositiveButton("제거", (d, w) -> {
-                                // 모든 잠금된 노트를 먼저 복호화 (암호 제거 전에 복호화해야 함)
-                                List<kr.akotis.todonote.model.NoteItem> notes = dbHelper.getAllNotes();
-                                for (kr.akotis.todonote.model.NoteItem note : notes) {
-                                    if (note.isLocked()) {
-                                        // 잠금 해제하면서 복호화된 내용으로 저장
-                                        dbHelper.toggleNoteLock(note.getId(), false);
-                                    }
-                                }
-
-                                // 데이터베이스에서 암호 해시 제거
+                                // 암호 해시를 지우고 휴지통을 포함한 모든 노트의 잠금을 해제
                                 dbHelper.removeNotePassword();
 
                                 // 앱 잠금 설정도 해제

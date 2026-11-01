@@ -22,7 +22,9 @@ import java.security.spec.KeySpec;
 import java.util.ArrayList;
 import java.util.List;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 
 import kr.akotis.todonote.model.DraftItem;
 import kr.akotis.todonote.model.MemoItem;
@@ -37,6 +39,10 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     public static final int MAX_STORED_MESSAGES = 30;
     /** 노트 하나당 보관하는 이전 버전 개수. */
     public static final int MAX_NOTE_VERSIONS = 30;
+
+    /** SQLite 파일의 첫 16바이트. */
+    private static final byte[] SQLITE_FILE_HEADER =
+            "SQLite format 3\0".getBytes(StandardCharsets.US_ASCII);
 
     /** 임시 저장본의 대상이 아직 저장되지 않은 새 항목임을 나타낸다. 실제 ID는 1부터 시작한다. */
     public static final long DRAFT_NEW_ITEM = 0;
@@ -132,8 +138,51 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     }
 
     DatabaseHelper(Context context, String databaseName) {
-        super(context, databaseName, null, DATABASE_VERSION);
+        super(context, databaseName, null, DATABASE_VERSION, new DamagedDatabaseKeeper(context));
         this.context = context;
+    }
+
+    /** 가져오려는 파일을 검사한 결과. */
+    public enum ImportCheck {
+        OK, NOT_BACKUP, DAMAGED, TOO_NEW
+    }
+
+    /**
+     * 현재 데이터를 교체하기 전에 이 앱의 온전한 백업인지 확인한다.
+     * 검사 중 손상이 발견되어도 파일이 삭제되지 않도록 아무 일도 하지 않는 오류 처리기를 쓴다.
+     */
+    public static ImportCheck checkImportFile(File file) {
+        byte[] header = new byte[SQLITE_FILE_HEADER.length];
+        try (FileInputStream in = new FileInputStream(file)) {
+            if (in.read(header) != header.length || !java.util.Arrays.equals(header, SQLITE_FILE_HEADER)) {
+                return ImportCheck.NOT_BACKUP;
+            }
+        } catch (IOException e) {
+            return ImportCheck.NOT_BACKUP;
+        }
+
+        try (SQLiteDatabase db = SQLiteDatabase.openDatabase(file.getAbsolutePath(), null,
+                SQLiteDatabase.OPEN_READONLY, corruptDb -> { })) {
+            if (db.getVersion() > DATABASE_VERSION) {
+                return ImportCheck.TOO_NEW;
+            }
+            if (db.getVersion() < 1 || !hasTable(db, TABLE_MEMO) || !hasTable(db, TABLE_NOTE)) {
+                return ImportCheck.NOT_BACKUP;
+            }
+            try (Cursor cursor = db.rawQuery("PRAGMA quick_check(1)", null)) {
+                return cursor.moveToFirst() && "ok".equalsIgnoreCase(cursor.getString(0))
+                        ? ImportCheck.OK : ImportCheck.DAMAGED;
+            }
+        } catch (SQLiteException e) {
+            return ImportCheck.DAMAGED;
+        }
+    }
+
+    private static boolean hasTable(SQLiteDatabase db, String table) {
+        try (Cursor cursor = db.rawQuery(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", new String[]{table})) {
+            return cursor.moveToFirst();
+        }
     }
 
     /**
@@ -211,29 +260,28 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             return false;
         }
 
+        return matchesStoredHash(storedHash, password);
+    }
+
+    /** 현재 형식(PBKDF2)과 1.5까지 쓰던 형식(SHA-256) 모두 확인한다. */
+    private static boolean matchesStoredHash(String storedHash, String password) {
         try {
-            byte[] storedCombined = Base64.decode(storedHash, Base64.NO_WRAP);
-
-            // PBKDF2 포맷 확인 (Salt 16 + PBKDF2 32 = 48바이트)
-            if (storedCombined.length == 48) {
-                byte[] salt = new byte[16];
-                byte[] storedPBKDF2 = new byte[32];
-
-                System.arraycopy(storedCombined, 0, salt, 0, 16);
-                System.arraycopy(storedCombined, 16, storedPBKDF2, 0, 32);
-
-                // 입력 암호로 동일 Salt로 PBKDF2 해시 생성
+            byte[] stored = Base64.decode(storedHash, Base64.NO_WRAP);
+            if (stored.length == 48) {
+                // Salt 16 + PBKDF2 32
+                byte[] salt = java.util.Arrays.copyOfRange(stored, 0, 16);
+                byte[] expected = java.util.Arrays.copyOfRange(stored, 16, 48);
                 SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
                 KeySpec spec = new PBEKeySpec(password.toCharArray(), salt, 10000, 256);
-                SecretKey key = factory.generateSecret(spec);
-                byte[] inputHash = key.getEncoded();
-
-                return java.util.Arrays.equals(storedPBKDF2, inputHash);
+                return MessageDigest.isEqual(expected, factory.generateSecret(spec).getEncoded());
             }
-            // 기타 해시 방식은 현재 지원하지 않음
+            if (stored.length == 32) {
+                byte[] input = MessageDigest.getInstance("SHA-256").digest(password.getBytes(StandardCharsets.UTF_8));
+                return MessageDigest.isEqual(stored, input);
+            }
             return false;
         } catch (Exception e) {
-            e.printStackTrace();
+            android.util.Log.e("DatabaseHelper", "Could not verify password", e);
             return false;
         }
     }
@@ -444,7 +492,11 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         File snapshot = File.createTempFile("todonote_backup_", ".db", directory);
         try {
             SQLiteDatabase db = getWritableDatabase();
-            db.execSQL("VACUUM INTO ?", new Object[]{snapshot.getAbsolutePath()});
+            try {
+                db.execSQL("VACUUM INTO ?", new Object[]{snapshot.getAbsolutePath()});
+            } finally {
+                db.close();
+            }
             return snapshot;
         } catch (RuntimeException e) {
             snapshot.delete();
@@ -791,8 +843,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     // ========== Note CRUD ==========
 
     public long insertNote(NoteItem note) {
-        // 노트 내용은 항상 평문으로 저장 (암호화하지 않음)
-        // 잠금 기능은 접근 인증만 담당하며, 암호화는 내보내기 시에만 적용
+        // 노트 내용은 항상 평문으로 저장한다. 잠금은 화면 접근 인증만 담당하고 내보내기 파일도 평문이다.
         String content = note.getContent();
         
         SQLiteDatabase db = this.getWritableDatabase();
@@ -863,8 +914,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     }
 
     public int updateNote(NoteItem note) {
-        // 노트 내용은 항상 평문으로 저장 (암호화하지 않음)
-        // 잠금 기능은 접근 인증만 담당하며, 암호화는 내보내기 시에만 적용
+        // 노트 내용은 항상 평문으로 저장한다. 잠금은 화면 접근 인증만 담당하고 내보내기 파일도 평문이다.
         String content = note.getContent();
 
         SQLiteDatabase db = this.getWritableDatabase();
@@ -1027,8 +1077,9 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             db.delete(TABLE_DRAFT, COL_DRAFT_TYPE + " = ? AND " + COL_DRAFT_TARGET_ID + " IN " + trashedNoteIds,
                     new String[]{DRAFT_TYPE_NOTE});
             int deletedNotes = db.delete(TABLE_NOTE, COL_NOTE_DELETED_AT + " IS NOT NULL", null);
+            int deletedMessages = db.delete(TABLE_MESSAGE, COL_MESSAGE_DELETED_AT + " IS NOT NULL", null);
             db.setTransactionSuccessful();
-            return deletedMemos + deletedNotes;
+            return deletedMemos + deletedNotes + deletedMessages;
         } finally {
             db.endTransaction();
             db.close();
@@ -1151,47 +1202,26 @@ public class DatabaseHelper extends SQLiteOpenHelper {
      */
     public boolean verifyNotePassword(String password) {
         String storedHash = getNotePasswordHash();
-        if (storedHash == null) {
-            return false;
-        }
-
-        try {
-            byte[] storedCombined = Base64.decode(storedHash, Base64.NO_WRAP);
-
-            // 새로운 PBKDF2 포맷 확인 (Salt 16 + PBKDF2 32 = 48바이트)
-            if (storedCombined.length == 48) {
-                // 새로운 PBKDF2 방식
-                byte[] salt = new byte[16];
-                byte[] storedPBKDF2 = new byte[32];
-
-                System.arraycopy(storedCombined, 0, salt, 0, 16);
-                System.arraycopy(storedCombined, 16, storedPBKDF2, 0, 32);
-
-                // 입력 암호로 동일 Salt로 PBKDF2 해시 생성
-                SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
-                KeySpec spec = new PBEKeySpec(password.toCharArray(), salt, 10000, 256);
-                SecretKey key = factory.generateSecret(spec);
-                byte[] inputHash = key.getEncoded();
-
-                return java.util.Arrays.equals(storedPBKDF2, inputHash);
-            } else {
-                // 하위 호환성: 기존 SHA-256 방식
-                String inputHash = hashPassword(password);
-                return storedHash.equals(inputHash);
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-            return false;
-        }
+        return storedHash != null && matchesStoredHash(storedHash, password);
     }
 
     /**
-     * 암호를 제거합니다.
+     * 암호를 제거하고 휴지통을 포함한 모든 노트의 잠금을 해제합니다.
+     * 암호 없이 잠긴 노트가 남으면 그 노트를 열 수 없게 됩니다.
      */
     public void removeNotePassword() {
         SQLiteDatabase db = this.getWritableDatabase();
-        db.delete(TABLE_PASSWORD, null, null);
-        db.close();
+        db.beginTransaction();
+        try {
+            ContentValues values = new ContentValues();
+            values.put(COL_NOTE_LOCKED, 0);
+            db.update(TABLE_NOTE, values, COL_NOTE_LOCKED + " = 1", null);
+            db.delete(TABLE_PASSWORD, null, null);
+            db.setTransactionSuccessful();
+        } finally {
+            db.endTransaction();
+            db.close();
+        }
     }
 
     /**
@@ -1221,6 +1251,9 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             return null;
         }
     }
+
+    // 아래 암호화 메서드는 현재 호출되지 않는다. 1.6 이전에 잠근 노트는 본문이 암호문으로 저장되어 있어,
+    // 그런 노트를 복구해야 할 때를 대비해 남겨 둔다.
 
     /**
      * 암호화 키를 생성합니다 (PBKDF2 + Salt 사용).
@@ -1392,8 +1425,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 
     /**
      * 노트를 잠금/잠금해제합니다.
-     * 잠금 기능은 접근 인증만 담당하며, 내용 암호화/복호화는 수행하지 않습니다.
-     * 암호화는 내보내기 시에만, 복호화는 가져오기 시에만 적용됩니다.
+     * 잠금은 화면 접근 인증만 담당하며 내용은 평문 그대로 유지됩니다.
      */
     public int toggleNoteLock(long noteId, boolean lock) {
         SQLiteDatabase db = this.getWritableDatabase();
