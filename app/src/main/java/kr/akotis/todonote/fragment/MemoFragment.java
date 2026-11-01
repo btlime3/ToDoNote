@@ -1,8 +1,10 @@
 package kr.akotis.todonote.fragment;
 
+import android.database.sqlite.SQLiteException;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -62,6 +64,8 @@ public class MemoFragment extends Fragment {
     private TextInputEditText etSearch;
     private TextView tvEmpty;
     private List<MemoItem> allMemos = new ArrayList<>();
+    /** 다른 화면을 열었다가 돌아오면 같은 Fragment로 뷰만 새로 만들어진다. */
+    private boolean viewCreatedBefore;
 
     public MemoFragment() {
         // Required empty public constructor
@@ -83,6 +87,7 @@ public class MemoFragment extends Fragment {
 
         dbHelper = new DatabaseHelper(requireContext());
         draftSaver = new DebouncedRunner(DRAFT_SAVE_DELAY_MS, this::saveDraftNow);
+        keyboardWasVisible = false;
 
         // 하단 NavBar 참조
         if (getActivity() != null) {
@@ -114,7 +119,11 @@ public class MemoFragment extends Fragment {
         // 메모 목록 로드
         loadMemos();
 
-        fabMemo.setOnClickListener(v -> showInputContainer(true));
+        fabMemo.setOnClickListener(v -> {
+            // + 버튼은 항상 새 메모다. 이전 수정 대상이 남으면 저장할 때 그 메모를 덮어쓰게 된다.
+            editingMemo = null;
+            showInputContainer(true);
+        });
 
         btnSave.setOnClickListener(v -> saveMemo());
 
@@ -166,8 +175,10 @@ public class MemoFragment extends Fragment {
             }
         };
         requireActivity().getOnBackPressedDispatcher().addCallback(getViewLifecycleOwner(), backCallback);
-        restoreDraft(savedInstanceState == null);
-        if (savedInstanceState == null) {
+        boolean firstView = savedInstanceState == null && !viewCreatedBefore;
+        viewCreatedBefore = true;
+        restoreDraft(firstView);
+        if (firstView) {
             focusRequestedMemo();
         }
     }
@@ -200,15 +211,22 @@ public class MemoFragment extends Fragment {
         if (inputContainer.getVisibility() != View.VISIBLE) {
             return;
         }
-        if (hasUnsavedInput()) {
-            long targetId = editingMemo != null ? editingMemo.getId() : DatabaseHelper.DRAFT_NEW_ITEM;
-            dbHelper.saveMemoDraft(targetId, currentInput());
-        } else {
-            dbHelper.deleteMemoDraft();
+        try {
+            if (hasUnsavedInput()) {
+                long targetId = editingMemo != null ? editingMemo.getId() : DatabaseHelper.DRAFT_NEW_ITEM;
+                dbHelper.saveMemoDraft(targetId, currentInput());
+            } else {
+                dbHelper.deleteMemoDraft();
+            }
+        } catch (SQLiteException e) {
+            // 저장 공간 부족 등으로 실패해도 입력 중인 화면이 종료되면 안 된다.
+            Log.w("MemoFragment", "Could not save memo draft", e);
         }
     }
 
     private void restoreDraft(boolean notifyUser) {
+        // 뷰를 새로 만들면 입력창은 닫힌 상태이므로 이전 수정 대상도 함께 잊는다.
+        editingMemo = null;
         DraftItem draft = dbHelper.getMemoDraft();
         if (draft == null) {
             return;
@@ -252,7 +270,12 @@ public class MemoFragment extends Fragment {
         new MaterialAlertDialogBuilder(requireContext())
                 .setTitle("메모 작성 취소")
                 .setMessage("작성 중인 내용을 버리시겠습니까?")
-                .setPositiveButton("버리기", (dialog, which) -> discardInput())
+                .setPositiveButton("버리기", (dialog, which) -> {
+                    // 다이얼로그가 떠 있는 동안 화면이 바뀌었으면 임시 저장본을 남겨 둔다.
+                    if (isAdded()) {
+                        discardInput();
+                    }
+                })
                 .setNegativeButton("계속 작성", null)
                 .show();
     }
@@ -363,9 +386,13 @@ public class MemoFragment extends Fragment {
             }
             // 새 메모가 검색 조건에 가려지지 않도록 검색어를 지운다. (목록 갱신도 함께 일어난다)
             etSearch.setText("");
-            // 새 메모는 상단에 추가되므로 목록을 다시 로드
             loadMemos();
-            recyclerMemo.scrollToPosition(0);
+            // 새 메모는 고정한 메모 바로 아래에 온다.
+            int newMemoPosition = 0;
+            while (newMemoPosition < allMemos.size() && allMemos.get(newMemoPosition).isPinned()) {
+                newMemoPosition++;
+            }
+            recyclerMemo.scrollToPosition(newMemoPosition);
         }
 
         dbHelper.deleteMemoDraft();
@@ -422,7 +449,7 @@ public class MemoFragment extends Fragment {
 
                 if (direction == ItemTouchHelper.LEFT) {
                     // 왼쪽 스와이프: 삭제
-                    deleteMemo(memo, position);
+                    deleteMemo(memo);
                 } else if (direction == ItemTouchHelper.RIGHT) {
                     // 오른쪽 스와이프: 수정
                     editMemo(memo);
@@ -493,12 +520,15 @@ public class MemoFragment extends Fragment {
         });
     }
 
-    private void deleteMemo(MemoItem memo, int position) {
+    private void deleteMemo(MemoItem memo) {
         // 삭제 확인 다이얼로그 표시
         new MaterialAlertDialogBuilder(requireContext())
                 .setTitle("메모 삭제")
                 .setMessage("정말로 이 메모를 삭제하시겠습니까?")
                 .setPositiveButton("삭제", (dialog, which) -> {
+                    if (!isAdded()) {
+                        return;
+                    }
                     int result = dbHelper.deleteMemo(memo.getId());
                     if (result > 0) {
                         loadMemos();

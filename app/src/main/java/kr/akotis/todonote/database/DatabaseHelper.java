@@ -3,6 +3,7 @@ package kr.akotis.todonote.database;
 import android.content.ContentValues;
 import android.content.Context;
 import android.database.Cursor;
+import android.database.DatabaseErrorHandler;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteException;
 import android.database.sqlite.SQLiteOpenHelper;
@@ -23,6 +24,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 
 import kr.akotis.todonote.model.DraftItem;
 import kr.akotis.todonote.model.MemoItem;
@@ -136,8 +138,47 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     }
 
     DatabaseHelper(Context context, String databaseName) {
-        super(context, databaseName, null, DATABASE_VERSION, new DamagedDatabaseKeeper(context));
+        this(context, databaseName, new DamagedDatabaseKeeper(context));
+    }
+
+    private DatabaseHelper(Context context, String databaseName, DatabaseErrorHandler errorHandler) {
+        super(context, databaseName, null, DATABASE_VERSION, errorHandler);
         this.context = context;
+    }
+
+    /**
+     * 가져오려는 파일의 사본을 실제로 열어 앱이 쓰는 테이블과 컬럼을 모두 읽을 수 있는지 확인한다.
+     * 이름만 같은 테이블이 있는 파일로 교체하면 앱이 시작할 때마다 종료되어 되돌릴 수 없게 된다.
+     * 옛 버전 백업은 이 사본에서 업그레이드까지 확인되며, 원본 파일은 바뀌지 않는다.
+     */
+    public static boolean canOpenImportedFile(Context context, File file) {
+        File trial = new File(context.getCacheDir(), "temp_import_db_trial_" + System.nanoTime() + ".db");
+        DatabaseHelper helper = null;
+        try {
+            Files.copy(file.toPath(), trial.toPath());
+            helper = new DatabaseHelper(context, trial.getAbsolutePath(), corruptDb -> { });
+            helper.getAllMemos();
+            helper.getDeletedMemos();
+            helper.getAllNotes();
+            helper.getDeletedNotes();
+            helper.getAllToDos();
+            helper.getAllMessages();
+            helper.getDeletedMessages();
+            helper.getNotePasswordHash();
+            helper.getNotePasswordHint();
+            helper.getNoteHistory(0);
+            helper.getNoteDraft(DRAFT_NEW_ITEM);
+            helper.getMemoDraft();
+            return true;
+        } catch (IOException | RuntimeException e) {
+            android.util.Log.w("DatabaseHelper", "Imported file cannot be opened by this app", e);
+            return false;
+        } finally {
+            if (helper != null) {
+                helper.close();
+            }
+            SQLiteDatabase.deleteDatabase(trial);
+        }
     }
 
     /** 가져오려는 파일을 검사한 결과. */
@@ -917,7 +958,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             values.put(COL_NOTE_TITLE, note.getTitle());
             values.put(COL_NOTE_CONTENT, content);
             values.put(COL_NOTE_UPDATED_AT, System.currentTimeMillis());
-            values.put(COL_NOTE_LOCKED, note.isLocked() ? 1 : 0);
+            // 잠금 상태는 저장하지 않는다. 열려 있던 화면의 옛 값이 암호 제거 후 다시 잠그면 안 된다.
 
             int result = db.update(TABLE_NOTE, values, COL_NOTE_ID + " = ?", new String[]{String.valueOf(note.getId())});
             db.setTransactionSuccessful();

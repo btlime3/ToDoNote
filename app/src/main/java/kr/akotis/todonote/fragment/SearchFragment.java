@@ -21,7 +21,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 import kr.akotis.todonote.R;
-import kr.akotis.todonote.activity.MainActivity;
 import kr.akotis.todonote.adapter.SearchResultAdapter;
 import kr.akotis.todonote.adapter.SearchResultAdapter.Item;
 import kr.akotis.todonote.adapter.SearchResultAdapter.Type;
@@ -139,30 +138,32 @@ public class SearchFragment extends Fragment {
     }
 
     private void openResult(Item item) {
-        MainActivity activity = (MainActivity) requireActivity();
+        // 결과를 하나씩 확인할 수 있도록 검색 화면 위에 열어 뒤로가기로 돌아오게 한다.
         switch (item.type) {
             case MEMO:
-                activity.showMemo(item.id);
+                openOnTop(MemoFragment.newInstance(item.id));
                 break;
             case NOTE:
-                if (item.locked) {
-                    NoteUnlocker.unlock(this, dbHelper, () -> openNote(item.id));
+                // 검색 목록을 읽은 뒤 암호가 제거되었을 수 있으므로 현재 잠금 상태를 다시 확인한다.
+                NoteItem note = dbHelper.getNoteById(item.id);
+                if (note != null && note.isLocked()) {
+                    NoteUnlocker.unlock(this, dbHelper, () -> openOnTop(NoteEditFragment.newInstance(item.id)));
                 } else {
-                    openNote(item.id);
+                    openOnTop(NoteEditFragment.newInstance(item.id));
                 }
                 break;
             case MESSAGE:
-                activity.showMessages();
+                openOnTop(new MessageFragment());
                 break;
             case TODO:
-                activity.showToDos(item.completed);
+                openOnTop(item.completed ? new CompletedToDoFragment() : new ToDoFragment());
                 break;
         }
     }
 
-    private void openNote(long noteId) {
+    private void openOnTop(Fragment fragment) {
         requireActivity().getSupportFragmentManager().beginTransaction()
-                .replace(R.id.fragment_container, NoteEditFragment.newInstance(noteId))
+                .replace(R.id.fragment_container, fragment)
                 .addToBackStack(null)
                 .commit();
     }

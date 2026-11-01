@@ -1,9 +1,11 @@
 package kr.akotis.todonote.fragment;
 
 import android.content.Context;
+import android.database.sqlite.SQLiteException;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -41,6 +43,9 @@ public class NoteEditFragment extends Fragment {
     private static final String ARG_NOTE_ID = "note_id";
     private static final String ARG_RESTORE_DRAFT = "restore_draft";
     private static final String STATE_DRAFT_DECISION_PENDING = "draft_decision_pending";
+    private static final String STATE_PROCESS_TOKEN = "process_token";
+    /** 앱이 종료되었다가 복원된 것인지 화면 회전인지 구분한다. 프로세스마다 값이 다르다. */
+    private static final long PROCESS_TOKEN = System.nanoTime();
 
     private EditText etTitle;
     private EditText etContent;
@@ -60,6 +65,8 @@ public class NoteEditFragment extends Fragment {
     private DebouncedRunner draftSaver;
     private OnBackPressedCallback backCallback;
     private AlertDialog draftDialog;
+    /** 편집 화면이 떠 있는 동안에만 의미가 있는 다이얼로그. 화면이 사라질 때 함께 닫는다. */
+    private AlertDialog activeDialog;
     /** 복원 여부를 고르기 전에는 남아 있는 임시 저장본을 덮어쓰거나 지우면 안 된다. */
     private boolean draftDecisionPending;
     /** 저장, 버리기, 삭제로 화면을 나가는 중이면 더 이상 임시 저장하지 않는다. */
@@ -166,6 +173,14 @@ public class NoteEditFragment extends Fragment {
         };
         requireActivity().getOnBackPressedDispatcher().addCallback(getViewLifecycleOwner(), backCallback);
 
+        if (needsUnlockAfterRestore(savedInstanceState)) {
+            // 앱이 종료된 뒤 복원된 잠긴 노트는 내용을 보이지 않고 목록으로 돌아가 다시 인증하게 한다.
+            // 임시 저장본은 그대로 남아 인증 후 다시 열 때 복원할 수 있다.
+            view.setVisibility(View.INVISIBLE);
+            exitEditor();
+            return;
+        }
+
         TextWatcher draftWatcher = new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {
@@ -192,10 +207,18 @@ public class NoteEditFragment extends Fragment {
         draftChecked = true;
     }
 
+    private boolean needsUnlockAfterRestore(@Nullable Bundle savedInstanceState) {
+        return savedInstanceState != null
+                && savedInstanceState.getLong(STATE_PROCESS_TOKEN, PROCESS_TOKEN) != PROCESS_TOKEN
+                && editingNote != null
+                && editingNote.isLocked();
+    }
+
     @Override
     public void onSaveInstanceState(@NonNull Bundle outState) {
         super.onSaveInstanceState(outState);
         outState.putBoolean(STATE_DRAFT_DECISION_PENDING, draftDecisionPending);
+        outState.putLong(STATE_PROCESS_TOKEN, PROCESS_TOKEN);
     }
 
     @Override
@@ -212,10 +235,15 @@ public class NoteEditFragment extends Fragment {
             return;
         }
         long targetId = draftTargetId();
-        if (hasUnsavedChanges()) {
-            dbHelper.saveNoteDraft(targetId, etTitle.getText().toString(), etContent.getText().toString());
-        } else {
-            dbHelper.deleteNoteDraft(targetId);
+        try {
+            if (hasUnsavedChanges()) {
+                dbHelper.saveNoteDraft(targetId, etTitle.getText().toString(), etContent.getText().toString());
+            } else {
+                dbHelper.deleteNoteDraft(targetId);
+            }
+        } catch (SQLiteException e) {
+            // 저장 공간 부족 등으로 실패해도 입력 중인 화면이 종료되면 안 된다.
+            Log.w("NoteEditFragment", "Could not save note draft", e);
         }
     }
 
@@ -267,7 +295,7 @@ public class NoteEditFragment extends Fragment {
             discardAndExit();
             return;
         }
-        new MaterialAlertDialogBuilder(requireContext())
+        activeDialog = new MaterialAlertDialogBuilder(requireContext())
                 .setTitle("저장하지 않은 내용")
                 .setMessage("변경한 내용을 저장하시겠습니까?")
                 .setPositiveButton("저장", (dialog, which) -> saveNote())
@@ -282,6 +310,9 @@ public class NoteEditFragment extends Fragment {
     }
 
     private void exitEditor() {
+        if (getView() == null) {
+            return;
+        }
         exiting = true;
         draftSaver.cancel();
         backCallback.setEnabled(false);
@@ -347,7 +378,7 @@ public class NoteEditFragment extends Fragment {
         for (int i = 0; i < rows.length; i++) {
             rows[i] = describeVersion(versions.get(i));
         }
-        new MaterialAlertDialogBuilder(requireContext())
+        activeDialog = new MaterialAlertDialogBuilder(requireContext())
                 .setTitle("이전 버전")
                 .setItems(rows, (dialog, which) -> showVersionPreview(versions.get(which)))
                 .setNegativeButton("닫기", null)
@@ -372,14 +403,14 @@ public class NoteEditFragment extends Fragment {
 
     private void showVersionPreview(NoteVersion version) {
         String title = version.getTitle().trim().isEmpty() ? "제목 없음" : version.getTitle();
-        AlertDialog preview = new MaterialAlertDialogBuilder(requireContext())
+        activeDialog = new MaterialAlertDialogBuilder(requireContext())
                 .setTitle(title)
                 .setMessage(formatVersionTime(version) + "에 저장한 내용\n\n" + version.getContent())
                 .setPositiveButton("이 버전으로 되돌리기", (dialog, which) -> requestRestoreVersion(version))
                 .setNegativeButton("목록", (dialog, which) -> showHistoryDialog())
                 .show();
         // 일부만 복사해서 쓸 수 있도록 내용을 선택 가능하게 둔다.
-        TextView message = preview.findViewById(android.R.id.message);
+        TextView message = activeDialog.findViewById(android.R.id.message);
         if (message != null) {
             message.setTextIsSelectable(true);
         }
@@ -390,7 +421,7 @@ public class NoteEditFragment extends Fragment {
             restoreVersion(version);
             return;
         }
-        new MaterialAlertDialogBuilder(requireContext())
+        activeDialog = new MaterialAlertDialogBuilder(requireContext())
                 .setTitle("저장하지 않은 내용")
                 .setMessage("지금 편집 중인 내용은 저장되어 있지 않습니다. 이 버전으로 바꾸면 사라집니다.")
                 .setPositiveButton("되돌리기", (dialog, which) -> restoreVersion(version))
@@ -406,7 +437,7 @@ public class NoteEditFragment extends Fragment {
     }
 
     private void confirmDeleteHistory() {
-        new MaterialAlertDialogBuilder(requireContext())
+        activeDialog = new MaterialAlertDialogBuilder(requireContext())
                 .setTitle("이력 삭제")
                 .setMessage("이 노트의 이전 버전을 모두 삭제하시겠습니까?\n현재 내용은 그대로 유지됩니다.")
                 .setPositiveButton("삭제", (dialog, which) -> {
@@ -490,7 +521,7 @@ public class NoteEditFragment extends Fragment {
     }
 
     private void showDeleteConfirmDialog() {
-        new MaterialAlertDialogBuilder(requireContext())
+        activeDialog = new MaterialAlertDialogBuilder(requireContext())
                 .setTitle("노트 삭제")
                 .setMessage("이 노트를 삭제하시겠습니까?")
                 .setPositiveButton("삭제", (dialog, which) -> deleteNote())
@@ -526,6 +557,10 @@ public class NoteEditFragment extends Fragment {
         if (draftDialog != null) {
             draftDialog.dismiss();
             draftDialog = null;
+        }
+        if (activeDialog != null) {
+            activeDialog.dismiss();
+            activeDialog = null;
         }
         setBottomNavVisible(true);
         super.onDestroyView();

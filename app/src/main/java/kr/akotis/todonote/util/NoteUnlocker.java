@@ -77,6 +77,10 @@ public final class NoteUnlocker {
         // 암호가 틀려도 다이얼로그를 닫지 않아 바로 다시 입력할 수 있다.
         dialog.setOnShowListener(shown ->
                 dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+                    if (!fragment.isAdded()) {
+                        dialog.dismiss();
+                        return;
+                    }
                     String password = etPassword.getText() != null ? etPassword.getText().toString() : "";
                     if (password.isEmpty()) {
                         toast("암호를 입력해주세요.");
@@ -90,7 +94,9 @@ public final class NoteUnlocker {
 
         btnFingerprint.setOnClickListener(v -> {
             dialog.dismiss();
-            authenticateWithBiometric(false);
+            if (fragment.isAdded()) {
+                authenticateWithBiometric(false);
+            }
         });
 
         dialog.show();

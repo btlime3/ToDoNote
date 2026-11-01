@@ -91,8 +91,10 @@ public class MainActivity extends AppCompatActivity {
     private MenuItem notificationMenuItem;
     private MenuItem searchMenuItem;
     private DatabaseHelper dbHelper;
-    /** 검색 결과에서 고른 메모. 메모 탭이 열릴 때 해당 위치로 이동한다. */
-    private long pendingMemoFocusId = -1;
+    /** 잠금 해제를 기다리는 동안 받은 알림 Intent가 있는지. 해제 뒤 해당 화면을 연다. */
+    private boolean notificationIntentPending;
+    /** 손상 안내를 이번 실행에서 이미 보여 주었는지. 화면으로 돌아올 때마다 반복하지 않는다. */
+    private boolean databaseDamageChecked;
     
     private static final String PREF_APP_LOCK = "app_lock_settings";
     private static final String KEY_APP_LOCK_ENABLED = "app_lock_enabled";
@@ -132,6 +134,7 @@ public class MainActivity extends AppCompatActivity {
                     @Override
                     public void onFragmentResumed(@NonNull FragmentManager fm, @NonNull Fragment f) {
                         updateSearchActionVisibility();
+                        syncBottomNavWithCurrentScreen();
                     }
                 }, false);
 
@@ -154,8 +157,6 @@ public class MainActivity extends AppCompatActivity {
         
         // 알림 채널 미리 생성 (앱이 꺼진 상태에서도 알림이 작동하도록)
         createNotificationChannel();
-
-        notifyIfDatabaseWasDamaged();
         
         // 앱 잠금 확인
         if (isAppLockRequired()) {
@@ -192,10 +193,14 @@ public class MainActivity extends AppCompatActivity {
 
         // 잠금 해제 전이면 인증 뒤 loadInitialFragment가 이 Intent를 처리한다.
         if (isAppLockRequired()) {
+            notificationIntentPending = true;
             return;
         }
+        routeNotificationIntent(intent);
+    }
 
-        // 알림 클릭으로 인한 Fragment 이동 처리
+    /** 알림 클릭으로 인한 Fragment 이동 처리 */
+    private void routeNotificationIntent(Intent intent) {
         String fragmentName = intent.getStringExtra("fragment");
         boolean toToDo = "todo".equals(fragmentName);
         if (!toToDo && !"message".equals(fragmentName)) {
@@ -219,16 +224,20 @@ public class MainActivity extends AppCompatActivity {
         findViewById(R.id.fragment_container).setVisibility(View.VISIBLE);
         // 시스템이 복원한 화면이 있으면 그대로 둔다. 시작 Intent를 다시 적용하면 보던 화면을 잃는다.
         if (getSupportFragmentManager().findFragmentById(R.id.fragment_container) != null) {
+            if (notificationIntentPending) {
+                notificationIntentPending = false;
+                routeNotificationIntent(getIntent());
+            }
             return;
         }
+        // 아래에서 getIntent()를 처리하므로 다시 처리하지 않는다.
+        notificationIntentPending = false;
         String fragmentName = getIntent().getStringExtra("fragment");
         if ("todo".equals(fragmentName)) {
             bottomNav.setSelectedItemId(R.id.nav_todo);
         } else if ("message".equals(fragmentName)) {
             // 알림 화면에서 뒤로 가면 메모 탭으로 돌아가도록 탭 표시만 맞춘다.
-            bottomNav.setOnItemSelectedListener(null);
-            bottomNav.setSelectedItemId(R.id.nav_memo);
-            bottomNav.setOnItemSelectedListener(this::onBottomNavItemSelected);
+            selectTabWithoutLoading(R.id.nav_memo);
             showMessages();
         } else {
             // 기본 화면을 메모 탭으로 설정 (탭 선택 리스너가 화면을 불러온다)
@@ -515,27 +524,42 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    /** 메모 탭을 열고 지정한 메모로 이동한다. */
-    public void showMemo(long memoId) {
-        pendingMemoFocusId = memoId;
-        bottomNav.setSelectedItemId(R.id.nav_memo);
-    }
-
-    public void showMessages() {
+    private void showMessages() {
         loadFragment(new MessageFragment());
     }
 
-    public void showToDos(boolean completed) {
-        if (completed) {
-            loadFragment(new CompletedToDoFragment());
+    /** 검색 결과에서 열었다가 돌아올 때도 하단 탭 표시가 현재 화면과 맞도록 한다. */
+    private void syncBottomNavWithCurrentScreen() {
+        Fragment current = getSupportFragmentManager().findFragmentById(R.id.fragment_container);
+        int tab;
+        if (current instanceof MemoFragment) {
+            tab = R.id.nav_memo;
+        } else if (current instanceof NoteFragment) {
+            tab = R.id.nav_note;
+        } else if (current instanceof ToDoFragment) {
+            tab = R.id.nav_todo;
         } else {
-            bottomNav.setSelectedItemId(R.id.nav_todo);
+            return;
         }
+        if (bottomNav.getSelectedItemId() != tab) {
+            selectTabWithoutLoading(tab);
+        }
+    }
+
+    private void selectTabWithoutLoading(int tab) {
+        bottomNav.setOnItemSelectedListener(null);
+        bottomNav.setSelectedItemId(tab);
+        bottomNav.setOnItemSelectedListener(this::onBottomNavItemSelected);
     }
     
     @Override
     protected void onResume() {
         super.onResume();
+        // 손상은 화면이 DB를 처음 열 때 발견되므로 화면이 만들어진 뒤에 확인한다.
+        if (!databaseDamageChecked) {
+            databaseDamageChecked = true;
+            notifyIfDatabaseWasDamaged();
+        }
         updateNotificationBadge();
         updateFcmTokenMenuVisibility();
     }
@@ -857,10 +881,7 @@ public class MainActivity extends AppCompatActivity {
         if (itemId == R.id.nav_todo) {
             return new ToDoFragment();
         } else if (itemId == R.id.nav_memo) {
-            MemoFragment memoFragment = pendingMemoFocusId != -1
-                    ? MemoFragment.newInstance(pendingMemoFocusId) : new MemoFragment();
-            pendingMemoFocusId = -1;
-            return memoFragment;
+            return new MemoFragment();
         } else if (itemId == R.id.nav_note) {
             return new NoteFragment();
         }
@@ -990,6 +1011,9 @@ public class MainActivity extends AppCompatActivity {
         }
 
         DatabaseHelper.ImportCheck check = DatabaseHelper.checkImportFile(tempDbFile);
+        if (check == DatabaseHelper.ImportCheck.OK && !DatabaseHelper.canOpenImportedFile(this, tempDbFile)) {
+            check = DatabaseHelper.ImportCheck.NOT_BACKUP;
+        }
         if (check != DatabaseHelper.ImportCheck.OK) {
             tempDbFile.delete();
             Toast.makeText(this, importCheckMessage(check), Toast.LENGTH_LONG).show();
@@ -1174,12 +1198,13 @@ public class MainActivity extends AppCompatActivity {
             for (File copy : copies) {
                 saveToDownloads(copy, copy.getName());
             }
+            // 사용자가 찾을 수 있는 곳에 저장한 뒤에만 완료로 표시한다.
+            DamagedDatabaseKeeper.markNotified(this);
             message = "손상된 파일 사본을 다운로드 폴더에 저장했습니다: " + copies.get(0).getName();
         } catch (IOException | RuntimeException e) {
             android.util.Log.e("MainActivity", "Could not export damaged copy", e);
-            message = "손상된 파일 사본은 앱 내부에 보관되어 있습니다.";
+            message = "손상된 파일 사본은 앱 내부에 보관되어 있으며, 다음 실행 때 다시 저장합니다.";
         }
-        DamagedDatabaseKeeper.markNotified(this);
         new MaterialAlertDialogBuilder(this)
                 .setTitle("데이터 손상 감지")
                 .setMessage("저장된 데이터에서 손상이 발견되어 새 데이터베이스로 시작했습니다.\n\n" + message

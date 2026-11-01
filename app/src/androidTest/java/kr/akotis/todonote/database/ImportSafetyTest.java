@@ -129,6 +129,105 @@ public class ImportSafetyTest {
     }
 
     @Test
+    public void fileWithSameTableNamesButWrongColumnsCannotBeOpened() throws IOException {
+        File lookalike = tempFile(new byte[0]);
+        try (SQLiteDatabase db = SQLiteDatabase.openOrCreateDatabase(lookalike, null)) {
+            db.execSQL("CREATE TABLE memo (id INTEGER PRIMARY KEY)");
+            db.execSQL("CREATE TABLE note (id INTEGER PRIMARY KEY)");
+            db.setVersion(15);
+        }
+        // 형식 검사는 통과하지만 교체하면 앱이 시작할 때마다 종료되는 파일이다.
+        assertEquals(DatabaseHelper.ImportCheck.OK, DatabaseHelper.checkImportFile(lookalike));
+        assertFalse(DatabaseHelper.canOpenImportedFile(context, lookalike));
+        assertTrue("검사가 손상 사본을 남기면 안 된다", DamagedDatabaseKeeper.pendingCopies(context).isEmpty());
+    }
+
+    @Test
+    public void realBackupCanBeOpenedAndTrialLeavesItUnchanged() throws IOException {
+        helper.insertMemo(new MemoItem("메모"));
+        File backup = snapshot();
+        byte[] before = Files.readAllBytes(backup.toPath());
+
+        assertTrue(DatabaseHelper.canOpenImportedFile(context, backup));
+
+        assertArrayEquals(before, Files.readAllBytes(backup.toPath()));
+    }
+
+    @Test
+    public void version12BackupPassesImportAndKeepsData() throws IOException {
+        // 1.8까지의 내보내기: v12 스키마의 DB 파일 그대로
+        File backup = tempFile(new byte[0]);
+        try (SQLiteDatabase db = SQLiteDatabase.openOrCreateDatabase(backup, null)) {
+            db.execSQL("CREATE TABLE todo (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, detail TEXT, " +
+                    "date INTEGER, time INTEGER, completed INTEGER DEFAULT 0, checked INTEGER DEFAULT 0, " +
+                    "notification_type TEXT, work_request_id TEXT, created_at INTEGER, updated_at INTEGER)");
+            db.execSQL("CREATE TABLE memo (id INTEGER PRIMARY KEY AUTOINCREMENT, content TEXT NOT NULL, " +
+                    "created_at INTEGER, updated_at INTEGER, memo_order INTEGER DEFAULT 0, deleted_at INTEGER)");
+            db.execSQL("CREATE TABLE note (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, content TEXT NOT NULL, " +
+                    "created_at INTEGER, updated_at INTEGER, deleted_at INTEGER, locked INTEGER DEFAULT 0, " +
+                    "note_order INTEGER DEFAULT 0)");
+            db.execSQL("CREATE TABLE password_settings (id INTEGER PRIMARY KEY AUTOINCREMENT, password_hash TEXT, " +
+                    "password_hint TEXT)");
+            db.execSQL("CREATE TABLE message (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, body TEXT, " +
+                    "received_at INTEGER, is_read INTEGER DEFAULT 0, deleted_at INTEGER)");
+            db.execSQL("INSERT INTO memo (content, created_at, updated_at) VALUES ('옛 메모', 1, 2)");
+            db.execSQL("INSERT INTO note (title, content, created_at, updated_at) VALUES ('옛 노트', '옛 내용', 1, 2)");
+            db.setVersion(12);
+        }
+
+        assertEquals(DatabaseHelper.ImportCheck.OK, DatabaseHelper.checkImportFile(backup));
+        assertTrue(DatabaseHelper.canOpenImportedFile(context, backup));
+        DatabaseHelper.prepareImportedDatabase(backup);
+
+        // 교체한 뒤 앱이 여는 것과 같은 경로로 연다.
+        DatabaseHelper restored = new DatabaseHelper(context, backup.getAbsolutePath());
+        try {
+            assertEquals("옛 메모", restored.getAllMemos().get(0).getContent());
+            assertEquals("옛 내용", restored.getAllNotes().get(0).getContent());
+            assertTrue(restored.getNoteHistory(1).isEmpty());
+        } finally {
+            restored.close();
+        }
+    }
+
+    @Test
+    public void historyDraftsAndPinsSurviveBackupRoundTrip() throws IOException {
+        long noteId = helper.insertNote(new NoteItem("제목", "첫 내용"));
+        NoteItem note = helper.getNoteById(noteId);
+        note.setContent("둘째 내용");
+        helper.updateNote(note);
+        helper.setNotePinned(noteId, true);
+        helper.saveNoteDraft(noteId, "제목", "임시 내용");
+
+        File backup = snapshot();
+
+        DatabaseHelper restored = new DatabaseHelper(context, backup.getAbsolutePath());
+        try {
+            assertEquals("첫 내용", restored.getNoteHistory(noteId).get(0).getContent());
+            assertEquals("임시 내용", restored.getNoteDraft(noteId).getContent());
+            assertTrue(restored.getNoteById(noteId).isPinned());
+        } finally {
+            restored.close();
+        }
+    }
+
+    @Test
+    public void savingFromAnOpenEditorDoesNotRestoreAnOldLock() {
+        helper.setNotePassword("암호", null);
+        long id = helper.insertNote(new NoteItem("제목", "내용"));
+        helper.toggleNoteLock(id, true);
+        // 잠긴 노트를 연 편집 화면이 이 값을 들고 있는 동안 암호가 제거되는 경우
+        NoteItem openInEditor = helper.getNoteById(id);
+        helper.removeNotePassword();
+
+        openInEditor.setContent("수정");
+        helper.updateNote(openInEditor);
+
+        assertFalse(helper.getNoteById(id).isLocked());
+        assertEquals("수정", helper.getNoteById(id).getContent());
+    }
+
+    @Test
     public void snapshotDoesNotLeaveConnectionOpen() throws IOException {
         helper.insertMemo(new MemoItem("메모"));
         snapshot();

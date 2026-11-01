@@ -141,7 +141,9 @@ public class TrashFragment extends Fragment {
                 .setTitle("항목 복원")
                 .setMessage("이 " + itemNameWithObjectParticle(trashItem) + " 복원하시겠습니까?")
                 .setPositiveButton("복원", (dialog, which) -> {
-                    restoreItem(trashItem);
+                    if (isAdded()) {
+                        restoreItem(trashItem);
+                    }
                 })
                 .setNegativeButton("취소", null)
                 .show();
@@ -155,7 +157,9 @@ public class TrashFragment extends Fragment {
                 .setTitle("영구 삭제")
                 .setMessage("이 " + itemNameWithObjectParticle(trashItem) + " 영구적으로 삭제하시겠습니까? 복원할 수 없습니다.")
                 .setPositiveButton("삭제", (dialog, which) -> {
-                    permanentlyDeleteItem(trashItem);
+                    if (isAdded()) {
+                        permanentlyDeleteItem(trashItem);
+                    }
                 })
                 .setNegativeButton("취소", null)
                 .show();
@@ -292,7 +296,9 @@ public class TrashFragment extends Fragment {
                 .setTitle("휴지통 비우기")
                 .setMessage(message)
                 .setPositiveButton("확인", (dialog, which) -> {
-                    emptyTrash();
+                    if (isAdded()) {
+                        emptyTrash();
+                    }
                 })
                 .setNegativeButton("취소", null)
                 .show();

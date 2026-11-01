@@ -35,10 +35,9 @@
 
         <receiver
             android:name="kr.akotis.todonote.widget.ToDoWidgetProvider"
-            android:exported="true">
+            android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-                <action android:name="kr.akotis.todonote.ACTION_TOGGLE_TODO" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"

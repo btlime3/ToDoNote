@@ -39,6 +39,7 @@ public class NoteFragment extends Fragment {
     private NoteAdapter noteAdapter;
     private List<NoteItem> allNotes;
     private TextView tvEmpty;
+    private Snackbar newNoteDraftNotice;
 
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
@@ -60,7 +61,9 @@ public class NoteFragment extends Fragment {
 
         // 노트 클릭 리스너
         noteAdapter.setOnNoteClickListener(note -> {
-            if (note.isLocked()) {
+            // 목록을 읽은 뒤 암호가 제거되었을 수 있으므로 현재 잠금 상태를 다시 확인한다.
+            NoteItem current = dbHelper.getNoteById(note.getId());
+            if (current != null && current.isLocked()) {
                 // 잠금된 노트: 지문 또는 암호로 인증한 뒤 열기
                 NoteUnlocker.unlock(this, dbHelper, () -> openNoteEditor(note.getId()));
             } else {
@@ -199,13 +202,28 @@ public class NoteFragment extends Fragment {
         if (dbHelper.getNoteDraft(DatabaseHelper.DRAFT_NEW_ITEM) == null) {
             return;
         }
-        Snackbar.make(recyclerNote, "작성 중이던 새 노트가 있습니다.", NEW_NOTE_DRAFT_NOTICE_MS)
+        newNoteDraftNotice = Snackbar.make(recyclerNote, "작성 중이던 새 노트가 있습니다.", NEW_NOTE_DRAFT_NOTICE_MS)
                 .setAnchorView(fabNote)
-                .setAction("이어 쓰기", v -> requireActivity().getSupportFragmentManager().beginTransaction()
-                        .replace(R.id.fragment_container, NoteEditFragment.newInstanceRestoringDraft())
-                        .addToBackStack(null)
-                        .commit())
-                .show();
+                .setAction("이어 쓰기", v -> {
+                    if (!isAdded()) {
+                        return;
+                    }
+                    requireActivity().getSupportFragmentManager().beginTransaction()
+                            .replace(R.id.fragment_container, NoteEditFragment.newInstanceRestoringDraft())
+                            .addToBackStack(null)
+                            .commit();
+                });
+        newNoteDraftNotice.show();
+    }
+
+    @Override
+    public void onPause() {
+        super.onPause();
+        // 스낵바는 Activity 화면에 붙으므로 이 화면을 떠날 때 함께 닫아야 한다.
+        if (newNoteDraftNotice != null) {
+            newNoteDraftNotice.dismiss();
+            newNoteDraftNotice = null;
+        }
     }
 
     private void openNoteEditor(long noteId) {

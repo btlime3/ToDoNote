@@ -122,6 +122,32 @@ public class DatabaseUpgradeTest {
     }
 
     @Test
+    public void firstRunWithManyMessagesTrimsOnlyMessages() {
+        createVersion12Database();
+        try (SQLiteDatabase db = SQLiteDatabase.openDatabase(context.getDatabasePath(databaseName).getPath(),
+                null, SQLiteDatabase.OPEN_READWRITE)) {
+            for (int i = 0; i < 50; i++) {
+                db.execSQL("INSERT INTO message (title, body, received_at) VALUES ('알림', '본문', ?)",
+                        new Object[]{1000 + i});
+            }
+        }
+
+        // 한 번 여는 동안 업그레이드, 알림 정리, 공간 회수가 이어서 실행된다.
+        DatabaseHelper helper = new DatabaseHelper(context, databaseName);
+        try {
+            assertEquals(DatabaseHelper.MAX_STORED_MESSAGES, helper.getAllMessages().size());
+            assertEquals(1049, helper.getAllMessages().get(0).getReceivedAt());
+            assertEquals(2, helper.getAllMemos().size());
+            assertEquals(2, helper.getAllNotes().size());
+            assertEquals("삭제한 메모", helper.getDeletedMemos().get(0).getContent());
+            assertEquals("삭제한 노트", helper.getDeletedNotes().get(0).getTitle());
+            assertEquals("hash", helper.getNotePasswordHash());
+        } finally {
+            helper.close();
+        }
+    }
+
+    @Test
     public void newFeaturesWorkOnAnUpgradedDatabase() {
         createVersion12Database();
 

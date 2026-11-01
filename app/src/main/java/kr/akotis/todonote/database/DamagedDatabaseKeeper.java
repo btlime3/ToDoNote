@@ -62,7 +62,16 @@ public final class DamagedDatabaseKeeper implements DatabaseErrorHandler {
             File file = new File(databasePath + suffix);
             // 열기에 실패하면서 생긴 빈 부속 파일은 담긴 내용이 없으므로 복사하지 않는다.
             if (file.isFile() && file.length() > 0) {
-                Files.copy(file.toPath(), new File(directory, copyName + suffix).toPath());
+                File target = new File(directory, copyName + suffix);
+                try {
+                    Files.copy(file.toPath(), target.toPath());
+                } catch (IOException e) {
+                    // 저장 공간이 부족해도 곧 삭제될 원본을 옮기는 것은 가능하다.
+                    target.delete();
+                    if (!file.renameTo(target)) {
+                        throw e;
+                    }
+                }
             }
         }
         removeOldCopies(directory);
