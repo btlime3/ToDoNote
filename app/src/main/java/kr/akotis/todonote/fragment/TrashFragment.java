@@ -75,10 +75,10 @@ public class TrashFragment extends Fragment {
 
                 if (direction == ItemTouchHelper.LEFT) {
                     // 왼쪽 스와이프: 영구 삭제 확인 다이얼로그
-                    showPermanentDeleteConfirmDialog(trashItem, position);
+                    showPermanentDeleteConfirmDialog(trashItem);
                 } else if (direction == ItemTouchHelper.RIGHT) {
                     // 오른쪽 스와이프: 복원 확인 다이얼로그
-                    showRestoreConfirmDialog(trashItem, position);
+                    showRestoreConfirmDialog(trashItem);
                 } else {
                     // 스와이프 취소 시 목록 새로고침
                     loadTrash();
@@ -133,7 +133,7 @@ public class TrashFragment extends Fragment {
         itemTouchHelper.attachToRecyclerView(recyclerTrash);
     }
 
-    private void showRestoreConfirmDialog(TrashAdapter.TrashItem trashItem, int position) {
+    private void showRestoreConfirmDialog(TrashAdapter.TrashItem trashItem) {
         // 스와이프 취소를 위해 목록 새로고침
         loadTrash();
         
@@ -141,18 +141,13 @@ public class TrashFragment extends Fragment {
                 .setTitle("항목 복원")
                 .setMessage("이 " + itemNameWithObjectParticle(trashItem) + " 복원하시겠습니까?")
                 .setPositiveButton("복원", (dialog, which) -> {
-                    restoreItem(trashItem, position);
+                    restoreItem(trashItem);
                 })
-                .setNegativeButton("취소", (dialog, which) -> {
-                    // 취소 시 아무 작업도 하지 않음 (이미 loadTrash()로 복원됨)
-                })
-                .setOnCancelListener(dialog -> {
-                    // 다이얼로그가 취소되면 아무 작업도 하지 않음
-                })
+                .setNegativeButton("취소", null)
                 .show();
     }
 
-    private void showPermanentDeleteConfirmDialog(TrashAdapter.TrashItem trashItem, int position) {
+    private void showPermanentDeleteConfirmDialog(TrashAdapter.TrashItem trashItem) {
         // 스와이프 취소를 위해 목록 새로고침
         loadTrash();
         
@@ -160,14 +155,9 @@ public class TrashFragment extends Fragment {
                 .setTitle("영구 삭제")
                 .setMessage("이 " + itemNameWithObjectParticle(trashItem) + " 영구적으로 삭제하시겠습니까? 복원할 수 없습니다.")
                 .setPositiveButton("삭제", (dialog, which) -> {
-                    permanentlyDeleteItem(trashItem, position);
+                    permanentlyDeleteItem(trashItem);
                 })
-                .setNegativeButton("취소", (dialog, which) -> {
-                    // 취소 시 아무 작업도 하지 않음 (이미 loadTrash()로 복원됨)
-                })
-                .setOnCancelListener(dialog -> {
-                    // 다이얼로그가 취소되면 아무 작업도 하지 않음
-                })
+                .setNegativeButton("취소", null)
                 .show();
     }
 
@@ -181,7 +171,7 @@ public class TrashFragment extends Fragment {
         return "알림을";
     }
 
-    private void restoreItem(TrashAdapter.TrashItem trashItem, int position) {
+    private void restoreItem(TrashAdapter.TrashItem trashItem) {
         int result = 0;
         String restoredMessage = "";
 
@@ -205,15 +195,13 @@ public class TrashFragment extends Fragment {
         }
     }
 
-    private void permanentlyDeleteItem(TrashAdapter.TrashItem trashItem, int position) {
-        int result = 0;
-        
+    private void permanentlyDeleteItem(TrashAdapter.TrashItem trashItem) {
         if (trashItem.getType() == TrashAdapter.TrashItem.TYPE_MEMO) {
-            result = dbHelper.permanentlyDeleteMemo(trashItem.getId());
+            dbHelper.permanentlyDeleteMemo(trashItem.getId());
         } else if (trashItem.getType() == TrashAdapter.TrashItem.TYPE_NOTE) {
-            result = dbHelper.permanentlyDeleteNote(trashItem.getId());
+            dbHelper.permanentlyDeleteNote(trashItem.getId());
         } else if (trashItem.getType() == TrashAdapter.TrashItem.TYPE_MESSAGE) {
-            result = dbHelper.permanentlyDeleteMessage(trashItem.getId());
+            dbHelper.permanentlyDeleteMessage(trashItem.getId());
         }
         
         loadTrash();

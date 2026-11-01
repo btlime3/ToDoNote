@@ -4,11 +4,11 @@ public class ToDoItem {
     private long id;
     private String title;
     private String detail;
-    private long date; // 날짜 (년월일만, 시간 제외)
+    private long date; // 날짜 (선택 날짜의 밀리초, 저장값에 시각 포함)
     private long time; // 시간 (밀리초)
     private boolean isCompleted;
     private boolean isChecked; // 체크 상태 (UI용, 완료 여부와 무관)
-    private String notificationType; // 알림 타입 (예: "morning_10min", "30min" 등)
+    private String notificationType; // 알림 타입 (예: "10min", "30min" 등)
     private String workRequestId; // WorkManager 요청 ID (알림 취소용)
     private long createdAt;
     private long updatedAt;

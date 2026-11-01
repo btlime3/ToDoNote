@@ -27,13 +27,10 @@ import com.google.android.material.textfield.TextInputEditText;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Calendar;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -70,7 +67,6 @@ public class ToDoFragment extends Fragment {
     private ToDoItem editingTodo;
     
     private Calendar currentMonth;
-    private Calendar selectedDate;
     private Calendar filteredDate; // 필터링된 날짜 (null이면 전체 보기)
     private Set<Long> datesWithTodos;
     private Set<String> koreanHolidays; // 한국 공휴일 (MM-dd 형식)
@@ -92,7 +88,6 @@ public class ToDoFragment extends Fragment {
         fabTodo = view.findViewById(R.id.fab_todo);
 
         currentMonth = Calendar.getInstance();
-        selectedDate = Calendar.getInstance();
         filteredDate = null; // 전체 보기
         datesWithTodos = new HashSet<>();
         koreanHolidays = new HashSet<>();
@@ -103,13 +98,6 @@ public class ToDoFragment extends Fragment {
         todoAdapter.setDatabaseHelper(dbHelper);
         recyclerTodo.setLayoutManager(new LinearLayoutManager(requireContext()));
         recyclerTodo.setAdapter(todoAdapter);
-        
-        // 체크박스 리스너 설정
-        todoAdapter.setOnToDoCheckedChangeListener((todo, isChecked) -> {
-            // 체크 상태 변경 시 DB 업데이트 (알림 기능과 무관)
-            todo.setChecked(isChecked);
-            dbHelper.updateToDo(todo);
-        });
 
         // 스와이프 제스처 설정
         setupSwipeGesture();
@@ -460,10 +448,8 @@ public class ToDoFragment extends Fragment {
             if (todo.getNotificationType() != null) {
                 String notificationType = todo.getNotificationType();
                 String displayText = getNotificationDisplayText(notificationType);
-                if (displayText != null) {
-                    spinnerNotification.setText(displayText, false);
-                    selectedNotificationType[0] = notificationType;
-                }
+                spinnerNotification.setText(displayText, false);
+                selectedNotificationType[0] = notificationType;
             }
         }
         
@@ -490,13 +476,13 @@ public class ToDoFragment extends Fragment {
 
         // 날짜 선택
         btnDate.setOnClickListener(v -> {
-            // 현재 선택된 날짜의 요일을 유지하기 위해 Calendar 복사
+            // 현재 선택된 날짜로 달력을 열기 위해 Calendar 복사
             Calendar dateForPicker = (Calendar) selectedDate[0].clone();
             
             DatePickerDialog datePickerDialog = new DatePickerDialog(
                     requireContext(),
                     (view, year, month, dayOfMonth) -> {
-                        // 선택한 날짜로 설정 (요일 유지)
+                        // 선택한 날짜로 설정
                         selectedDate[0].set(year, month, dayOfMonth);
                         updateDateText(tvDate, selectedDate[0]);
                     },
@@ -556,7 +542,6 @@ public class ToDoFragment extends Fragment {
                 if (result > 0) {
                     loadToDos();
                     updateWidget();
-                    // Toast.makeText(requireContext(), "할 일이 수정되었습니다.", Toast.LENGTH_SHORT).show();
                 }
                 editingTodo = null;
             } else {
@@ -580,7 +565,6 @@ public class ToDoFragment extends Fragment {
                     
                     loadToDos();
                     updateWidget();
-                    //Toast.makeText(requireContext(), "할 일이 추가되었습니다.", Toast.LENGTH_SHORT).show();
                 }
             }
 
@@ -620,7 +604,7 @@ public class ToDoFragment extends Fragment {
 
                 if (direction == ItemTouchHelper.LEFT) {
                     // 왼쪽 스와이프: 완료 확인 다이얼로그 표시
-                    showCompleteConfirmDialog(todo, position);
+                    showCompleteConfirmDialog(todo);
                 } else if (direction == ItemTouchHelper.RIGHT) {
                     // 오른쪽 스와이프: 수정
                     editToDo(todo);
@@ -684,7 +668,7 @@ public class ToDoFragment extends Fragment {
         loadToDos();
     }
 
-    private void showCompleteConfirmDialog(ToDoItem todo, int position) {
+    private void showCompleteConfirmDialog(ToDoItem todo) {
         // 스와이프 취소를 위해 목록 새로고침
         loadToDos();
         
@@ -709,12 +693,7 @@ public class ToDoFragment extends Fragment {
                         loadToDos();
                     }
                 })
-                .setNegativeButton("취소", (dialog, which) -> {
-                    // 취소 시 아무 작업도 하지 않음 (이미 loadToDos()로 복원됨)
-                })
-                .setOnCancelListener(dialog -> {
-                    // 다이얼로그가 취소되면 아무 작업도 하지 않음
-                })
+                .setNegativeButton("취소", null)
                 .show();
     }
 
@@ -843,11 +822,6 @@ public class ToDoFragment extends Fragment {
      * 알림 지연 시간 계산 (밀리초)
      */
     private long calculateNotificationDelay(Calendar todoDateTime, String notificationType) {
-        // 알림 없음 선택 시 음수 반환 (알림 예약하지 않음)
-        if (notificationType == null) {
-            return -1;
-        }
-
         Calendar now = Calendar.getInstance();
         Calendar notificationTime = (Calendar) todoDateTime.clone();
 
@@ -879,9 +853,6 @@ public class ToDoFragment extends Fragment {
      * 알림 타입을 표시 텍스트로 변환
      */
     private String getNotificationDisplayText(String notificationType) {
-        if (notificationType == null) {
-            return "알림없음";
-        }
         switch (notificationType) {
             case "10min": return "10분전";
             case "30min": return "30분전";

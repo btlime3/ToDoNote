@@ -33,12 +33,6 @@
             </intent-filter>
         </activity>
 
-        <activity
-            android:name="kr.akotis.todonote.activity.NoteEditActivity"
-            android:exported="false"
-            android:windowSoftInputMode="adjustResize"
-            android:parentActivityName="kr.akotis.todonote.activity.MainActivity" />
-
         <receiver
             android:name="kr.akotis.todonote.widget.ToDoWidgetProvider"
             android:exported="true">

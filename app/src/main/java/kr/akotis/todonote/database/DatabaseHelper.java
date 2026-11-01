@@ -2,7 +2,6 @@ package kr.akotis.todonote.database;
 
 import android.content.ContentValues;
 import android.content.Context;
-import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteException;
@@ -16,7 +15,6 @@ import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.security.spec.KeySpec;
 import java.util.ArrayList;
@@ -183,13 +181,6 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", new String[]{table})) {
             return cursor.moveToFirst();
         }
-    }
-
-    /**
-     * 데이터베이스 파일의 절대 경로를 반환합니다.
-     */
-    public String getDatabasePath() {
-        return getReadableDatabase().getPath();
     }
 
     /**
@@ -1104,13 +1095,6 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     // ========== Note Lock & Password ==========
 
     /**
-     * 암호를 해시하여 데이터베이스에 저장합니다.
-     */
-    public void setNotePassword(String password) {
-        setNotePassword(password, null);
-    }
-
-    /**
      * 암호와 힌트를 함께 저장합니다.
      */
     public void setNotePassword(String password, String hint) {
@@ -1670,13 +1654,6 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     public int permanentlyDeleteMessage(long id) {
         SQLiteDatabase db = this.getWritableDatabase();
         int result = db.delete(TABLE_MESSAGE, COL_MESSAGE_ID + " = ?", new String[]{String.valueOf(id)});
-        db.close();
-        return result;
-    }
-
-    public int deleteAllMessages() {
-        SQLiteDatabase db = this.getWritableDatabase();
-        int result = db.delete(TABLE_MESSAGE, null, null);
         db.close();
         return result;
     }

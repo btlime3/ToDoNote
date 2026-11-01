@@ -1,7 +1,5 @@
 package kr.akotis.todonote.widget;
 
-import android.app.PendingIntent;
-import android.appwidget.AppWidgetManager;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
@@ -15,7 +13,6 @@ import java.util.List;
 import java.util.Locale;
 
 import kr.akotis.todonote.R;
-import kr.akotis.todonote.activity.MainActivity;
 import kr.akotis.todonote.database.DatabaseHelper;
 import kr.akotis.todonote.model.ToDoItem;
 
@@ -23,24 +20,16 @@ public class ToDoWidgetService extends RemoteViewsService {
 
     @Override
     public RemoteViewsFactory onGetViewFactory(Intent intent) {
-        ToDoRemoteViewsFactory factory = new ToDoRemoteViewsFactory(this.getApplicationContext());
-        int appWidgetId = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID);
-        factory.setAppWidgetId(appWidgetId);
-        return factory;
+        return new ToDoRemoteViewsFactory(this.getApplicationContext());
     }
 
     private class ToDoRemoteViewsFactory implements RemoteViewsService.RemoteViewsFactory {
         private Context context;
         private List<ToDoItem> todoList;
-        private int appWidgetId;
 
         ToDoRemoteViewsFactory(Context context) {
             this.context = context;
             this.todoList = new ArrayList<>();
-        }
-        
-        void setAppWidgetId(int appWidgetId) {
-            this.appWidgetId = appWidgetId;
         }
 
         @Override
@@ -173,16 +162,14 @@ public class ToDoWidgetService extends RemoteViewsService {
             }
 
             // 체크박스 클릭 시 체크 상태 토글 (FillInIntent 사용 - 템플릿과 함께)
-            // FillInIntent의 data URI는 템플릿 Intent의 data URI와 병합됨
+            // 템플릿이 FLAG_MUTABLE이고 data가 없어서 이 data URI가 템플릿에 채워진다.
             Intent toggleFillInIntent = new Intent();
-            // data URI만 설정 (extra는 전달되지 않을 수 있음)
+            // Provider는 이 data URI에서 할 일 ID를 읽는다.
             toggleFillInIntent.setData(Uri.parse("widget://todo/" + todo.getId()));
             views.setOnClickFillInIntent(R.id.widget_todo_checkbox, toggleFillInIntent);
-            
-            // 디버깅: 체크박스에 FillInIntent가 설정되었는지 확인
-            android.util.Log.d("ToDoWidget", "Setting checkbox FillInIntent for todo " + todo.getId());
 
-            // 항목 클릭 시 앱 열기 (TodoFragment로 이동)
+            // 제목, 날짜, 시간 클릭: 템플릿이 토글 브로드캐스트이므로 앱을 열지 않는다.
+            // 이 FillInIntent에는 data가 없어서 Provider가 토글하지 않고 끝낸다.
             Intent fillInIntent = new Intent();
             fillInIntent.putExtra("fragment", "todo");
             views.setOnClickFillInIntent(R.id.widget_todo_title, fillInIntent);

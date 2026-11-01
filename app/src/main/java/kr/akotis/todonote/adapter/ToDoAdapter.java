@@ -23,17 +23,7 @@ import kr.akotis.todonote.model.ToDoItem;
 public class ToDoAdapter extends RecyclerView.Adapter<ToDoAdapter.ToDoViewHolder> {
 
     private List<ToDoItem> todoList;
-    private OnToDoClickListener listener;
-    private OnToDoCheckedChangeListener checkedListener;
     private DatabaseHelper dbHelper;
-
-    public interface OnToDoClickListener {
-        void onToDoClick(ToDoItem todo);
-    }
-
-    public interface OnToDoCheckedChangeListener {
-        void onCheckedChanged(ToDoItem todo, boolean isChecked);
-    }
 
     public ToDoAdapter() {
         this.todoList = new ArrayList<>();
@@ -41,14 +31,6 @@ public class ToDoAdapter extends RecyclerView.Adapter<ToDoAdapter.ToDoViewHolder
 
     public void setDatabaseHelper(DatabaseHelper dbHelper) {
         this.dbHelper = dbHelper;
-    }
-
-    public void setOnToDoClickListener(OnToDoClickListener listener) {
-        this.listener = listener;
-    }
-
-    public void setOnToDoCheckedChangeListener(OnToDoCheckedChangeListener listener) {
-        this.checkedListener = listener;
     }
 
     @NonNull
@@ -76,13 +58,6 @@ public class ToDoAdapter extends RecyclerView.Adapter<ToDoAdapter.ToDoViewHolder
         // notifyDataSetChanged()를 호출하여 모든 ViewHolder가 재바인딩되도록 함
         // 이때 bind() 메서드에서 데이터베이스의 체크 상태가 체크박스에 반영됨
         notifyDataSetChanged();
-    }
-
-    public void removeToDo(int position) {
-        if (position >= 0 && position < todoList.size()) {
-            todoList.remove(position);
-            notifyItemRemoved(position);
-        }
     }
 
     public ToDoItem getToDoAt(int position) {
@@ -139,14 +114,8 @@ public class ToDoAdapter extends RecyclerView.Adapter<ToDoAdapter.ToDoViewHolder
             tvDate = itemView.findViewById(R.id.tv_todo_date);
             tvTime = itemView.findViewById(R.id.tv_todo_time);
 
-            itemView.setOnClickListener(v -> {
-                if (listener != null) {
-                    int position = getAdapterPosition();
-                    if (position != RecyclerView.NO_POSITION) {
-                        listener.onToDoClick(todoList.get(position));
-                    }
-                }
-            });
+            // 클릭 동작은 없지만 터치 처리는 그대로 둔다.
+            itemView.setClickable(true);
         }
 
         public void bind(ToDoItem todo) {
@@ -155,7 +124,6 @@ public class ToDoAdapter extends RecyclerView.Adapter<ToDoAdapter.ToDoViewHolder
             
             // 데이터베이스에서 읽어온 체크 상태를 체크박스에 설정
             boolean isChecked = todo.isChecked();
-            android.util.Log.d("ToDoAdapter", "bind: todo id=" + todo.getId() + ", title=" + todo.getTitle() + ", isChecked=" + isChecked);
             
             // 체크박스에 현재 todo 객체를 태그로 저장 (ViewHolder 재사용 시 확인용)
             checkboxTodo.setTag(todo);
@@ -195,10 +163,6 @@ public class ToDoAdapter extends RecyclerView.Adapter<ToDoAdapter.ToDoViewHolder
                     tvDate.setAlpha(checked ? 0.5f : 1.0f);
                     tvTime.setAlpha(checked ? 0.5f : 1.0f);
                 }
-                // 외부 리스너 호출 (완료 상태 변경 등)
-                if (checkedListener != null) {
-                    checkedListener.onCheckedChanged(todo, checked);
-                }
             });
             
             // 체크 상태에 따라 취소선 표시
@@ -207,7 +171,7 @@ public class ToDoAdapter extends RecyclerView.Adapter<ToDoAdapter.ToDoViewHolder
             // 날짜별 스타일 적용
             applyDateBasedStyle(todo);
             
-            // 완료된 항목은 취소선 표시 (완료 상태는 별도)
+            // 완료된 항목은 투명도로 표시 (완료 상태는 별도)
             boolean isCompleted = todo.isCompleted();
             if (isCompleted) {
                 tvTitle.setAlpha(0.5f);

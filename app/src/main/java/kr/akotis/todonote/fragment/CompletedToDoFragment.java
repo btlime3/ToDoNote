@@ -46,9 +46,6 @@ public class CompletedToDoFragment extends Fragment {
         recyclerTodo.setLayoutManager(new LinearLayoutManager(requireContext()));
         recyclerTodo.setAdapter(todoAdapter);
 
-        // 체크박스 리스너 제거 (완료된 작업에서는 체크박스로 작업하지 않음)
-        todoAdapter.setOnToDoCheckedChangeListener(null);
-
         // 스와이프 제스처 설정
         setupSwipeGesture();
 
@@ -73,10 +70,10 @@ public class CompletedToDoFragment extends Fragment {
 
                 if (direction == ItemTouchHelper.LEFT) {
                     // 왼쪽 스와이프: 삭제 확인 다이얼로그 표시
-                    showDeleteConfirmDialog(todo, position);
+                    showDeleteConfirmDialog(todo);
                 } else if (direction == ItemTouchHelper.RIGHT) {
                     // 오른쪽 스와이프: 복원 확인 다이얼로그 표시
-                    showRestoreConfirmDialog(todo, position);
+                    showRestoreConfirmDialog(todo);
                 } else {
                     // 스와이프 취소 시 목록 새로고침
                     loadCompletedToDos();
@@ -131,7 +128,7 @@ public class CompletedToDoFragment extends Fragment {
         itemTouchHelper.attachToRecyclerView(recyclerTodo);
     }
 
-    private void showRestoreConfirmDialog(ToDoItem todo, int position) {
+    private void showRestoreConfirmDialog(ToDoItem todo) {
         // 스와이프 취소를 위해 목록 새로고침
         loadCompletedToDos();
         
@@ -146,22 +143,16 @@ public class CompletedToDoFragment extends Fragment {
                     if (result > 0) {
                         // 목록에서 제거
                         loadCompletedToDos();
-                        //Toast.makeText(requireContext(), "작업이 복원되었습니다.", Toast.LENGTH_SHORT).show();
                     } else {
                         loadCompletedToDos();
                         Toast.makeText(requireContext(), "복원에 실패했습니다.", Toast.LENGTH_SHORT).show();
                     }
                 })
-                .setNegativeButton("취소", (dialog, which) -> {
-                    // 취소 시 아무 작업도 하지 않음 (이미 loadCompletedToDos()로 복원됨)
-                })
-                .setOnCancelListener(dialog -> {
-                    // 다이얼로그가 취소되면 아무 작업도 하지 않음
-                })
+                .setNegativeButton("취소", null)
                 .show();
     }
 
-    private void showDeleteConfirmDialog(ToDoItem todo, int position) {
+    private void showDeleteConfirmDialog(ToDoItem todo) {
         // 스와이프 취소를 위해 목록 새로고침
         loadCompletedToDos();
         
@@ -179,18 +170,12 @@ public class CompletedToDoFragment extends Fragment {
                     if (result > 0) {
                         // 목록에서 제거
                         loadCompletedToDos();
-                        //Toast.makeText(requireContext(), "작업이 삭제되었습니다.", Toast.LENGTH_SHORT).show();
                     } else {
                         loadCompletedToDos();
                         Toast.makeText(requireContext(), "삭제에 실패했습니다.", Toast.LENGTH_SHORT).show();
                     }
                 })
-                .setNegativeButton("취소", (dialog, which) -> {
-                    // 취소 시 아무 작업도 하지 않음 (이미 loadCompletedToDos()로 복원됨)
-                })
-                .setOnCancelListener(dialog -> {
-                    // 다이얼로그가 취소되면 아무 작업도 하지 않음
-                })
+                .setNegativeButton("취소", null)
                 .show();
     }
 

@@ -4,7 +4,6 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
-import android.widget.ImageView;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -52,11 +51,6 @@ public class TrashAdapter extends RecyclerView.Adapter<TrashAdapter.TrashViewHol
     }
 
     private List<TrashItem> trashList;
-    private OnTrashItemClickListener listener;
-
-    public interface OnTrashItemClickListener {
-        void onTrashItemClick(TrashItem item);
-    }
 
     public TrashAdapter() {
         this.trashList = new ArrayList<>();
@@ -97,17 +91,6 @@ public class TrashAdapter extends RecyclerView.Adapter<TrashAdapter.TrashViewHol
         return trashList;
     }
 
-    public void removeTrashItem(int position) {
-        if (position >= 0 && position < trashList.size()) {
-            trashList.remove(position);
-            notifyItemRemoved(position);
-        }
-    }
-
-    public void setOnTrashItemClickListener(OnTrashItemClickListener listener) {
-        this.listener = listener;
-    }
-
     class TrashViewHolder extends RecyclerView.ViewHolder {
         private TextView tvItemType;
         private TextView tvMemoContent;
@@ -116,7 +99,6 @@ public class TrashAdapter extends RecyclerView.Adapter<TrashAdapter.TrashViewHol
         private TextView tvMessageTitle;
         private TextView tvMessageBody;
         private FrameLayout layoutLocked;
-        private ImageView ivLock;
         private TextView tvDeletedDate;
 
         public TrashViewHolder(@NonNull View itemView) {
@@ -128,17 +110,10 @@ public class TrashAdapter extends RecyclerView.Adapter<TrashAdapter.TrashViewHol
             tvMessageTitle = itemView.findViewById(R.id.tv_message_title);
             tvMessageBody = itemView.findViewById(R.id.tv_message_body);
             layoutLocked = itemView.findViewById(R.id.layout_locked);
-            ivLock = itemView.findViewById(R.id.iv_lock);
             tvDeletedDate = itemView.findViewById(R.id.tv_deleted_date);
 
-            itemView.setOnClickListener(v -> {
-                if (listener != null) {
-                    int position = getAdapterPosition();
-                    if (position != RecyclerView.NO_POSITION) {
-                        listener.onTrashItemClick(trashList.get(position));
-                    }
-                }
-            });
+            // 클릭 동작은 없지만 터치 처리는 그대로 둔다.
+            itemView.setClickable(true);
         }
 
         public void bind(TrashItem trashItem) {

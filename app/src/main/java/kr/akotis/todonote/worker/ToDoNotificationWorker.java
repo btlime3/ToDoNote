@@ -17,7 +17,6 @@ import kr.akotis.todonote.model.ToDoItem;
 
 public class ToDoNotificationWorker extends Worker {
     private static final String CHANNEL_ID = "todo_notification_channel";
-    private static final int NOTIFICATION_ID = 1000;
 
     public ToDoNotificationWorker(Context context, WorkerParameters params) {
         super(context, params);
@@ -43,7 +42,7 @@ public class ToDoNotificationWorker extends Worker {
             return Result.success();
         }
 
-        // 알림 채널 생성 (Android 8.0 이상)
+        // 알림 채널 생성
         createNotificationChannel();
 
         // 알림 클릭 시 앱 열기

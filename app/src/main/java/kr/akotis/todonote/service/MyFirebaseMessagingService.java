@@ -72,7 +72,7 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
      * data payload만 있는 경우 시스템이 자동으로 알림을 띄우지 않으므로 앱이 직접 띄워야 함
      */
     private void showNotificationWithMessage(String title, String body) {
-        // 알림 채널 생성 (Android 8.0 이상)
+        // 알림 채널 생성
         createNotificationChannel();
 
         // 알림 클릭 시 MainActivity로 이동 (message fragment 열기)

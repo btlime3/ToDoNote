@@ -68,7 +68,7 @@ public class MessageFragment extends Fragment {
                 MessageItem message = messageAdapter.getMessageAt(position);
                 
                 if (message != null) {
-                    showDeleteConfirmDialog(message, position);
+                    showDeleteConfirmDialog(message);
                 }
             }
 
@@ -107,7 +107,7 @@ public class MessageFragment extends Fragment {
         itemTouchHelper.attachToRecyclerView(recyclerMessages);
     }
 
-    private void showDeleteConfirmDialog(MessageItem message, int position) {
+    private void showDeleteConfirmDialog(MessageItem message) {
         // 먼저 목록 새로고침 (스와이프 취소)
         loadMessages();
         

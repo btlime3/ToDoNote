@@ -72,11 +72,6 @@ public class MemoAdapter extends RecyclerView.Adapter<MemoAdapter.MemoViewHolder
         notifyDataSetChanged();
     }
 
-    public void addMemo(MemoItem memo) {
-        memoList.add(memo);
-        notifyItemInserted(memoList.size() - 1);
-    }
-
     public void moveItem(int fromPosition, int toPosition) {
         if (fromPosition < toPosition) {
             for (int i = fromPosition; i < toPosition; i++) {
