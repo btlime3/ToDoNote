@@ -5,6 +5,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
+import android.database.sqlite.SQLiteException;
 import android.database.sqlite.SQLiteOpenHelper;
 import android.util.Base64;
 
@@ -20,6 +21,8 @@ import java.security.SecureRandom;
 import java.security.spec.KeySpec;
 import java.util.ArrayList;
 import java.util.List;
+import java.io.File;
+import java.io.IOException;
 
 import kr.akotis.todonote.model.MemoItem;
 import kr.akotis.todonote.model.NoteItem;
@@ -29,6 +32,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 
     private static final String DATABASE_NAME = "ToDoNote.db";
     private static final int DATABASE_VERSION = 12;
+    public static final int MAX_STORED_MESSAGES = 30;
     
     // 암호 설정 테이블
     private static final String TABLE_PASSWORD = "password_settings";
@@ -82,7 +86,11 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     private static final String COL_MESSAGE_DELETED_AT = "deleted_at";
 
     public DatabaseHelper(Context context) {
-        super(context, DATABASE_NAME, null, DATABASE_VERSION);
+        this(context, DATABASE_NAME);
+    }
+
+    DatabaseHelper(Context context, String databaseName) {
+        super(context, databaseName, null, DATABASE_VERSION);
         this.context = context;
     }
 
@@ -342,6 +350,58 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         if (oldVersion < 12) {
             // 암호 설정 테이블에 힌트 컬럼 추가
             db.execSQL("ALTER TABLE " + TABLE_PASSWORD + " ADD COLUMN " + COL_PASSWORD_HINT + " TEXT");
+        }
+    }
+
+    @Override
+    public void onOpen(SQLiteDatabase db) {
+        super.onOpen(db);
+        if (!db.isReadOnly() && trimMessages(db) > 0) {
+            // 기존 DB와 오래된 백업의 초과 알림을 정리한 경우에만 공간 회수.
+            // 이후 수신은 최대 30개를 유지하며 빈 페이지를 재사용한다.
+            try {
+                db.execSQL("VACUUM");
+            } catch (SQLiteException e) {
+                // 공간 회수 실패가 앱 실행이나 알림 수신을 막지 않도록 한다.
+                android.util.Log.w("DatabaseHelper", "Could not compact message storage", e);
+            }
+        }
+    }
+
+    private static int trimMessages(SQLiteDatabase db) {
+        // 휴지통의 알림도 포함해서 총 30개. 같은 수신 시각이면 ID로 순서를 고정한다.
+        return db.delete(TABLE_MESSAGE, COL_MESSAGE_ID + " NOT IN (SELECT " +
+                COL_MESSAGE_ID + " FROM " + TABLE_MESSAGE + " ORDER BY " +
+                COL_MESSAGE_RECEIVED_AT + " DESC, " + COL_MESSAGE_ID +
+                " DESC LIMIT " + MAX_STORED_MESSAGES + ")", null);
+    }
+
+    /** WAL의 데이터도 포함한 일관된 사본을 만들고 빈 페이지를 제거한다. */
+    public File createCompactBackup(File directory) throws IOException {
+        File snapshot = File.createTempFile("todonote_backup_", ".db", directory);
+        try {
+            SQLiteDatabase db = getWritableDatabase();
+            db.execSQL("VACUUM INTO ?", new Object[]{snapshot.getAbsolutePath()});
+            return snapshot;
+        } catch (RuntimeException e) {
+            snapshot.delete();
+            throw e;
+        }
+    }
+
+    /** 인증이 끝난 가져오기 사본만 정리하며 메모, 노트, 할 일은 변경하지 않는다. */
+    public static void prepareImportedDatabase(File file) {
+        try (SQLiteDatabase db = SQLiteDatabase.openDatabase(
+                file.getAbsolutePath(), null, SQLiteDatabase.OPEN_READWRITE)) {
+            // FCM 테이블이 없었던 예전 백업은 기존 onUpgrade에 맡긴다.
+            try (Cursor cursor = db.rawQuery(
+                    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+                    new String[]{TABLE_MESSAGE})) {
+                if (cursor.moveToFirst()) {
+                    trimMessages(db);
+                }
+            }
+            db.execSQL("VACUUM");
         }
     }
 
@@ -1213,15 +1273,22 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 
     public long insertMessage(kr.akotis.todonote.model.MessageItem message) {
         SQLiteDatabase db = this.getWritableDatabase();
-        ContentValues values = new ContentValues();
-        values.put(COL_MESSAGE_TITLE, message.getTitle());
-        values.put(COL_MESSAGE_BODY, message.getBody());
-        values.put(COL_MESSAGE_RECEIVED_AT, message.getReceivedAt());
-        values.put(COL_MESSAGE_IS_READ, message.isRead() ? 1 : 0);
+        db.beginTransaction();
+        try {
+            ContentValues values = new ContentValues();
+            values.put(COL_MESSAGE_TITLE, message.getTitle());
+            values.put(COL_MESSAGE_BODY, message.getBody());
+            values.put(COL_MESSAGE_RECEIVED_AT, message.getReceivedAt());
+            values.put(COL_MESSAGE_IS_READ, message.isRead() ? 1 : 0);
 
-        long id = db.insert(TABLE_MESSAGE, null, values);
-        db.close();
-        return id;
+            long id = db.insertOrThrow(TABLE_MESSAGE, null, values);
+            trimMessages(db);
+            db.setTransactionSuccessful();
+            return id;
+        } finally {
+            db.endTransaction();
+            db.close();
+        }
     }
 
     public List<kr.akotis.todonote.model.MessageItem> getAllMessages() {
@@ -1229,7 +1296,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         SQLiteDatabase db = this.getReadableDatabase();
         String selection = COL_MESSAGE_DELETED_AT + " IS NULL";
         Cursor cursor = db.query(TABLE_MESSAGE, null, selection, null, null, null,
-                COL_MESSAGE_RECEIVED_AT + " DESC");
+                COL_MESSAGE_RECEIVED_AT + " DESC, " + COL_MESSAGE_ID + " DESC",
+                String.valueOf(MAX_STORED_MESSAGES));
 
         if (cursor.moveToFirst()) {
             do {

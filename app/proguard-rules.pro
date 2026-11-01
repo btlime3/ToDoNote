@@ -1,4 +1,7 @@
 # Add project specific ProGuard rules here.
+# Keep app component names and members stable, including Worker names already
+# persisted by WorkManager. Unused dependency code/resources can still shrink.
+-keep class kr.akotis.todonote.** { *; }
 # You can control the set of applied configuration files using the
 # proguardFiles setting in build.gradle.
 #

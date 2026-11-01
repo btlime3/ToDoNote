@@ -821,6 +821,7 @@ public class MainActivity extends AppCompatActivity {
      * 데이터베이스를 내보냅니다 (다운로드 폴더에 저장).
      */
     private void exportDatabase() {
+        File snapshot = null;
         try {
             String dbPath = DatabaseHelper.getDatabasePath(this);
             File dbFile = new File(dbPath);
@@ -829,6 +830,8 @@ public class MainActivity extends AppCompatActivity {
                 Toast.makeText(this, "데이터베이스 파일을 찾을 수 없습니다.", Toast.LENGTH_SHORT).show();
                 return;
             }
+
+            snapshot = dbHelper.createCompactBackup(getCacheDir());
 
             // 파일명에 타임스탬프 추가
             SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault());
@@ -845,7 +848,7 @@ public class MainActivity extends AppCompatActivity {
 
                 Uri uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues);
                 if (uri != null) {
-                    try (InputStream in = new FileInputStream(dbFile);
+                    try (InputStream in = new FileInputStream(snapshot);
                          OutputStream out = resolver.openOutputStream(uri)) {
                         if (out != null) {
                             byte[] buffer = new byte[4096];
@@ -864,7 +867,7 @@ public class MainActivity extends AppCompatActivity {
                 File downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
                 File backupFile = new File(downloadsDir, fileName);
                 
-                try (InputStream in = new FileInputStream(dbFile);
+                try (InputStream in = new FileInputStream(snapshot);
                      OutputStream out = new FileOutputStream(backupFile)) {
                     byte[] buffer = new byte[4096];
                     int bytesRead;
@@ -874,9 +877,13 @@ public class MainActivity extends AppCompatActivity {
                     Toast.makeText(this, "다운로드 폴더에 백업이 저장되었습니다: " + fileName, Toast.LENGTH_LONG).show();
                 }
             }
-        } catch (IOException e) {
+        } catch (IOException | android.database.sqlite.SQLiteException e) {
             e.printStackTrace();
             Toast.makeText(this, "백업 중 오류가 발생했습니다: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+        } finally {
+            if (snapshot != null) {
+                snapshot.delete();
+            }
         }
     }
 
@@ -1008,19 +1015,20 @@ public class MainActivity extends AppCompatActivity {
      */
     private void performDatabaseImport(File tempDbFile) {
         try {
+            DatabaseHelper.prepareImportedDatabase(tempDbFile);
             // 현재 DB 백업
             String dbPath = DatabaseHelper.getDatabasePath(this);
             File dbFile = new File(dbPath);
-            File backupFile = new File(dbPath + ".backup_" + System.currentTimeMillis());
+            File backupFile = new File(getNoBackupFilesDir(), "ToDoNote_before_import.db");
             
             if (dbFile.exists()) {
-                try (InputStream in = new FileInputStream(dbFile);
-                     OutputStream out = new FileOutputStream(backupFile)) {
-                    byte[] buffer = new byte[4096];
-                    int bytesRead;
-                    while ((bytesRead = in.read(buffer)) != -1) {
-                        out.write(buffer, 0, bytesRead);
-                    }
+                // 복원 전 안전 사본은 최신 1개만 유지해 반복 복원 시 누적을 막는다.
+                File recoverySnapshot = dbHelper.createCompactBackup(getNoBackupFilesDir());
+                try {
+                    java.nio.file.Files.move(recoverySnapshot.toPath(), backupFile.toPath(),
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                } finally {
+                    recoverySnapshot.delete();
                 }
             }
 
@@ -1055,7 +1063,7 @@ public class MainActivity extends AppCompatActivity {
                     }
                 }, 1000);
             }
-        } catch (IOException e) {
+        } catch (IOException | android.database.sqlite.SQLiteException e) {
             e.printStackTrace();
             // 임시 파일 삭제
             tempDbFile.delete();
