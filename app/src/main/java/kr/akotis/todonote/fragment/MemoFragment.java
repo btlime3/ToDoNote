@@ -1,6 +1,5 @@
 package kr.akotis.todonote.fragment;
 
-import android.app.AlertDialog;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
@@ -347,26 +346,26 @@ public class MemoFragment extends Fragment {
 
         if (editingMemo != null) {
             // 수정 모드
-            editingMemo.setContent(content);
-            int result = dbHelper.updateMemo(editingMemo);
-            if (result > 0) {
-                loadMemos(); // 목록 새로고침
-                //Toast.makeText(requireContext(), "메모가 수정되었습니다.", Toast.LENGTH_SHORT).show();
+            MemoItem edited = editingMemo;
+            String previousContent = edited.getContent();
+            edited.setContent(content);
+            if (dbHelper.updateMemo(edited) <= 0) {
+                edited.setContent(previousContent);
+                Toast.makeText(requireContext(), "저장하지 못했습니다. 입력한 내용은 그대로 두었습니다.", Toast.LENGTH_LONG).show();
+                return;
             }
-            editingMemo = null;
+            loadMemos(); // 목록 새로고침
         } else {
             // 새 메모 추가
-            MemoItem memo = new MemoItem(content);
-            long id = dbHelper.insertMemo(memo);
-
-            if (id > 0) {
-                memo.setId(id);
-                // 새 메모가 검색 조건에 가려지지 않도록 검색어를 지운다. (목록 갱신도 함께 일어난다)
-                etSearch.setText("");
-                // 새 메모는 상단에 추가되므로 목록을 다시 로드
-                loadMemos();
-                recyclerMemo.scrollToPosition(0);
+            if (dbHelper.insertMemo(new MemoItem(content)) <= 0) {
+                Toast.makeText(requireContext(), "저장하지 못했습니다. 입력한 내용은 그대로 두었습니다.", Toast.LENGTH_LONG).show();
+                return;
             }
+            // 새 메모가 검색 조건에 가려지지 않도록 검색어를 지운다. (목록 갱신도 함께 일어난다)
+            etSearch.setText("");
+            // 새 메모는 상단에 추가되므로 목록을 다시 로드
+            loadMemos();
+            recyclerMemo.scrollToPosition(0);
         }
 
         dbHelper.deleteMemoDraft();
@@ -407,6 +406,13 @@ public class MemoFragment extends Fragment {
             public boolean isLongPressDragEnabled() {
                 // 검색 결과는 일부만 보이므로 순서를 바꾸면 전체 순서가 어긋난다.
                 return currentQuery().isEmpty();
+            }
+
+            @Override
+            public int getSwipeDirs(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder viewHolder) {
+                // 입력창이 열린 동안에는 작성 중인 내용과 충돌하지 않도록 수정과 삭제를 막는다.
+                return inputContainer.getVisibility() == View.VISIBLE
+                        ? 0 : super.getSwipeDirs(recyclerView, viewHolder);
             }
 
             @Override
@@ -474,10 +480,6 @@ public class MemoFragment extends Fragment {
     private void editMemo(MemoItem memo) {
         // 목록 새로고침 (스와이프로 인해 제거된 항목 복원)
         loadMemos();
-        if (inputContainer.getVisibility() == View.VISIBLE && hasUnsavedInput()) {
-            Toast.makeText(requireContext(), "작성 중인 메모를 먼저 저장하거나 취소해주세요.", Toast.LENGTH_SHORT).show();
-            return;
-        }
         editingMemo = memo;
         etMemoInput.setText(memo.getContent());
         showInputContainer(true);
@@ -493,16 +495,12 @@ public class MemoFragment extends Fragment {
 
     private void deleteMemo(MemoItem memo, int position) {
         // 삭제 확인 다이얼로그 표시
-        new AlertDialog.Builder(requireContext())
+        new MaterialAlertDialogBuilder(requireContext())
                 .setTitle("메모 삭제")
                 .setMessage("정말로 이 메모를 삭제하시겠습니까?")
                 .setPositiveButton("삭제", (dialog, which) -> {
                     int result = dbHelper.deleteMemo(memo.getId());
                     if (result > 0) {
-                        if (editingMemo != null && editingMemo.getId() == memo.getId()) {
-                            // 수정 중이던 메모를 지웠으면 입력창도 함께 닫는다.
-                            discardInput();
-                        }
                         loadMemos();
                     } else {
                         Toast.makeText(requireContext(), "삭제에 실패했습니다.", Toast.LENGTH_SHORT).show();

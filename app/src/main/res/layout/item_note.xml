@@ -26,7 +26,6 @@
                 android:id="@+id/tv_note_content"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:background="@color/color_surface"
                 android:ellipsize="end"
                 android:gravity="top|start"
                 android:maxLines="7"

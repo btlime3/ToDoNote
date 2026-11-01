@@ -45,5 +45,18 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/tv_trash_title" />
 
+    <TextView
+        android:id="@+id/tv_trash_empty"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="48dp"
+        android:text="휴지통이 비어 있습니다."
+        android:textColor="@color/color_text_light"
+        android:textSize="14sp"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/tv_trash_title" />
+
 </androidx.constraintlayout.widget.ConstraintLayout>
 

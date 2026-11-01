@@ -344,6 +344,9 @@ public class ToDoFragment extends Fragment {
 
     private void loadToDos() {
         recyclerTodo.post(() -> {
+            if (!isAdded()) {
+                return;
+            }
             // 모든 ToDo 가져오기 (완료된 항목 포함 - 달력 표시용)
             List<ToDoItem> allTodos = dbHelper.getAllToDos();
             
@@ -412,6 +415,8 @@ public class ToDoFragment extends Fragment {
     }
 
     private void showToDoInputDialog(ToDoItem todo) {
+        // 이전 수정 창을 닫기만 했더라도 새 할 일이 그 항목을 덮어쓰지 않게 매번 다시 정한다.
+        editingTodo = todo;
         View dialogView = LayoutInflater.from(requireContext())
                 .inflate(R.layout.dialog_todo_input, null);
 
@@ -446,7 +451,6 @@ public class ToDoFragment extends Fragment {
         final String[] selectedNotificationType = {null}; // 기본값: 알림 없음
         
         if (todo != null) {
-            editingTodo = todo;
             etTitle.setText(todo.getTitle());
             etDetail.setText(todo.getDetail());
             selectedDate[0].setTimeInMillis(todo.getDate());

@@ -46,7 +46,7 @@ public class ToDoWidgetProvider extends AppWidgetProvider {
         // 위젯 제목 클릭 시 앱 열기 (TodoFragment로 이동)
         Intent appIntent = new Intent(context, MainActivity.class);
         appIntent.putExtra("fragment", "todo");
-        appIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        appIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         PendingIntent appPendingIntent = PendingIntent.getActivity(
                 context, 0, appIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         views.setOnClickPendingIntent(R.id.widget_title, appPendingIntent);
@@ -54,10 +54,9 @@ public class ToDoWidgetProvider extends AppWidgetProvider {
         // 체크박스 클릭을 위한 템플릿 설정 (먼저 설정해야 함)
         Intent toggleTemplateIntent = new Intent(context, ToDoWidgetProvider.class);
         toggleTemplateIntent.setAction(ACTION_TOGGLE_TODO);
-        // 템플릿 Intent에 data URI 패턴 설정 (FillInIntent와 병합될 때 사용)
-        toggleTemplateIntent.setData(Uri.parse("widget://todo/"));
+        // 항목별 data는 FillInIntent가 채운다. 템플릿에 data가 있거나 불변이면 병합되지 않는다.
         PendingIntent toggleTemplatePendingIntent = PendingIntent.getBroadcast(
-                context, 0, toggleTemplateIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+                context, 0, toggleTemplateIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE);
         views.setPendingIntentTemplate(R.id.widget_todo_list, toggleTemplatePendingIntent);
 
         // 데이터 변경 알림 후 위젯 업데이트

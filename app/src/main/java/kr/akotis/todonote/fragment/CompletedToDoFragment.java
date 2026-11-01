@@ -27,6 +27,7 @@ import kr.akotis.todonote.model.ToDoItem;
 public class CompletedToDoFragment extends Fragment {
 
     private RecyclerView recyclerTodo;
+    private View tvEmpty;
     private DatabaseHelper dbHelper;
     private ToDoAdapter todoAdapter;
 
@@ -37,6 +38,7 @@ public class CompletedToDoFragment extends Fragment {
 
         dbHelper = new DatabaseHelper(requireContext());
         recyclerTodo = view.findViewById(R.id.recycler_todo);
+        tvEmpty = view.findViewById(R.id.tv_completed_empty);
 
         // RecyclerView 설정
         todoAdapter = new ToDoAdapter();
@@ -209,9 +211,13 @@ public class CompletedToDoFragment extends Fragment {
 
     private void loadCompletedToDos() {
         recyclerTodo.post(() -> {
+            if (!isAdded()) {
+                return;
+            }
             // 완료된 항목만 가져오기
             List<ToDoItem> completedTodos = dbHelper.getCompletedToDos();
             todoAdapter.setToDos(completedTodos);
+            tvEmpty.setVisibility(completedTodos.isEmpty() ? View.VISIBLE : View.GONE);
         });
     }
 

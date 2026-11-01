@@ -17,7 +17,9 @@
         <!-- Text colors -->
         <item name="android:textColorPrimary">@color/color_text_dark</item>
         <item name="android:textColorSecondary">@color/color_text_medium</item>
-        <item name="colorOnPrimary">@color/white</item>
+        <!-- 민트색 버튼 위 글자가 잘 보이도록 어두운 색을 쓴다 -->
+        <item name="colorOnPrimary">@color/color_text_dark</item>
+        <item name="materialAlertDialogTheme">@style/ThemeOverlay.ToDoNote.MaterialAlertDialog</item>
         <item name="colorOnSecondary">@color/color_text_dark</item>
         <item name="colorOnBackground">@color/color_text_dark</item>
         <item name="colorOnSurface">@color/color_text_dark</item>
@@ -35,6 +37,11 @@
     </style>
 
     <style name="Theme.ToDoNote" parent="Base.Theme.ToDoNote" />
+
+    <!-- 다이얼로그 버튼 글자를 밝은 민트색 대신 어두운 메인 컬러로 표시 -->
+    <style name="ThemeOverlay.ToDoNote.MaterialAlertDialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
+        <item name="colorPrimary">@color/color_primary_text</item>
+    </style>
 
     <!-- 노트 편집 화면 상단의 아이콘 버튼 -->
     <style name="NoteEditIconButton">

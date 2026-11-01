@@ -29,6 +29,7 @@ import kr.akotis.todonote.model.NoteItem;
 public class TrashFragment extends Fragment {
 
     private RecyclerView recyclerTrash;
+    private View tvEmpty;
     private DatabaseHelper dbHelper;
     private TrashAdapter trashAdapter;
 
@@ -39,6 +40,7 @@ public class TrashFragment extends Fragment {
 
         dbHelper = new DatabaseHelper(requireContext());
         recyclerTrash = view.findViewById(R.id.recycler_trash);
+        tvEmpty = view.findViewById(R.id.tv_trash_empty);
 
         // RecyclerView 설정
         trashAdapter = new TrashAdapter();
@@ -135,18 +137,9 @@ public class TrashFragment extends Fragment {
         // 스와이프 취소를 위해 목록 새로고침
         loadTrash();
         
-        String itemType;
-        if (trashItem.getType() == TrashAdapter.TrashItem.TYPE_MEMO) {
-            itemType = "메모";
-        } else if (trashItem.getType() == TrashAdapter.TrashItem.TYPE_NOTE) {
-            itemType = "노트";
-        } else {
-            itemType = "알림";
-        }
-        
         new MaterialAlertDialogBuilder(requireContext())
                 .setTitle("항목 복원")
-                .setMessage("이 " + itemType + "를 복원하시겠습니까?")
+                .setMessage("이 " + itemNameWithObjectParticle(trashItem) + " 복원하시겠습니까?")
                 .setPositiveButton("복원", (dialog, which) -> {
                     restoreItem(trashItem, position);
                 })
@@ -163,18 +156,9 @@ public class TrashFragment extends Fragment {
         // 스와이프 취소를 위해 목록 새로고침
         loadTrash();
         
-        String itemType;
-        if (trashItem.getType() == TrashAdapter.TrashItem.TYPE_MEMO) {
-            itemType = "메모";
-        } else if (trashItem.getType() == TrashAdapter.TrashItem.TYPE_NOTE) {
-            itemType = "노트";
-        } else {
-            itemType = "알림";
-        }
-        
         new MaterialAlertDialogBuilder(requireContext())
                 .setTitle("영구 삭제")
-                .setMessage("이 " + itemType + "를 영구적으로 삭제하시겠습니까? 복원할 수 없습니다.")
+                .setMessage("이 " + itemNameWithObjectParticle(trashItem) + " 영구적으로 삭제하시겠습니까? 복원할 수 없습니다.")
                 .setPositiveButton("삭제", (dialog, which) -> {
                     permanentlyDeleteItem(trashItem, position);
                 })
@@ -187,23 +171,33 @@ public class TrashFragment extends Fragment {
                 .show();
     }
 
+    /** 알림은 받침이 있어 조사가 다르다. */
+    private static String itemNameWithObjectParticle(TrashAdapter.TrashItem trashItem) {
+        if (trashItem.getType() == TrashAdapter.TrashItem.TYPE_MEMO) {
+            return "메모를";
+        } else if (trashItem.getType() == TrashAdapter.TrashItem.TYPE_NOTE) {
+            return "노트를";
+        }
+        return "알림을";
+    }
+
     private void restoreItem(TrashAdapter.TrashItem trashItem, int position) {
         int result = 0;
-        String itemType = "";
-        
+        String restoredMessage = "";
+
         if (trashItem.getType() == TrashAdapter.TrashItem.TYPE_MEMO) {
             result = dbHelper.restoreMemo(trashItem.getId());
-            itemType = "메모";
+            restoredMessage = "메모가 복원되었습니다.";
         } else if (trashItem.getType() == TrashAdapter.TrashItem.TYPE_NOTE) {
             result = dbHelper.restoreNote(trashItem.getId());
-            itemType = "노트";
+            restoredMessage = "노트가 복원되었습니다.";
         } else if (trashItem.getType() == TrashAdapter.TrashItem.TYPE_MESSAGE) {
             result = dbHelper.restoreMessage(trashItem.getId());
-            itemType = "알림";
+            restoredMessage = "알림이 복원되었습니다.";
         }
-        
+
         if (result > 0) {
-            Toast.makeText(requireContext(), itemType + "가 복원되었습니다.", Toast.LENGTH_SHORT).show();
+            Toast.makeText(requireContext(), restoredMessage, Toast.LENGTH_SHORT).show();
             loadTrash();
         } else {
             Toast.makeText(requireContext(), "복원에 실패했습니다.", Toast.LENGTH_SHORT).show();
@@ -227,6 +221,9 @@ public class TrashFragment extends Fragment {
 
     private void loadTrash() {
         recyclerTrash.post(() -> {
+            if (!isAdded()) {
+                return;
+            }
             List<TrashAdapter.TrashItem> trashItems = new ArrayList<>();
             
             // 삭제된 메모 가져오기
@@ -282,6 +279,7 @@ public class TrashFragment extends Fragment {
             });
             
             trashAdapter.setTrashItems(trashItems);
+            tvEmpty.setVisibility(trashItems.isEmpty() ? View.VISIBLE : View.GONE);
         });
     }
 

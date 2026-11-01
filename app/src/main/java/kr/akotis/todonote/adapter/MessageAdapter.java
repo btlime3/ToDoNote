@@ -1,7 +1,5 @@
 package kr.akotis.todonote.adapter;
 
-import android.os.Build;
-import android.text.Html;
 import android.text.method.LinkMovementMethod;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -83,14 +81,7 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.MessageV
             String body = message.getBody() != null ? message.getBody() : "";
             
             // HTML로 렌더링 (줄바꿈은 <br>, 링크는 <a href> 태그 사용)
-            CharSequence htmlBody;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                htmlBody = Html.fromHtml(body, Html.FROM_HTML_MODE_LEGACY);
-            } else {
-                htmlBody = HtmlCompat.fromHtml(body, HtmlCompat.FROM_HTML_MODE_LEGACY);
-            }
-            
-            tvBody.setText(htmlBody);
+            tvBody.setText(HtmlCompat.fromHtml(body, HtmlCompat.FROM_HTML_MODE_LEGACY));
             
             // 링크 색상을 파란색으로 설정
             tvBody.setLinkTextColor(itemView.getContext().getResources().getColor(R.color.link_color, null));

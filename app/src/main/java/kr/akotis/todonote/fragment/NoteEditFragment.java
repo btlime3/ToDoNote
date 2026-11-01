@@ -64,6 +64,8 @@ public class NoteEditFragment extends Fragment {
     private boolean draftDecisionPending;
     /** 저장, 버리기, 삭제로 화면을 나가는 중이면 더 이상 임시 저장하지 않는다. */
     private boolean exiting;
+    /** 알림 화면 등을 열었다가 돌아오면 입력란이 스스로 복원되므로 임시 저장본을 다시 묻지 않는다. */
+    private boolean draftChecked;
 
     public static NoteEditFragment newInstance(long noteId) {
         NoteEditFragment fragment = new NoteEditFragment();
@@ -182,11 +184,12 @@ public class NoteEditFragment extends Fragment {
         etContent.addTextChangedListener(draftWatcher);
 
         // 화면 회전처럼 편집이 이어지는 경우에는 입력란이 스스로 복원되므로 다시 묻지 않는다.
-        boolean decisionWasPending = savedInstanceState != null
-                && savedInstanceState.getBoolean(STATE_DRAFT_DECISION_PENDING);
-        if (savedInstanceState == null || decisionWasPending) {
+        boolean decisionWasPending = draftDecisionPending || (savedInstanceState != null
+                && savedInstanceState.getBoolean(STATE_DRAFT_DECISION_PENDING));
+        if ((savedInstanceState == null && !draftChecked) || decisionWasPending) {
             offerDraftRestore();
         }
+        draftChecked = true;
     }
 
     @Override
@@ -416,6 +419,11 @@ public class NoteEditFragment extends Fragment {
 
     private void toggleLock() {
         if (editingNote == null || noteId == -1) {
+            return;
+        }
+        // 암호 없이 잠그면 인증할 방법이 없어 노트를 열 수 없게 된다.
+        if (!editingNote.isLocked() && !dbHelper.hasNotePassword()) {
+            Toast.makeText(requireContext(), "먼저 왼쪽 메뉴의 '암호 설정'에서 암호를 설정해주세요.", Toast.LENGTH_LONG).show();
             return;
         }
 

@@ -19,7 +19,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:textSize="12sp"
-            android:textColor="@color/color_primary"
+            android:textColor="@color/color_primary_text"
             android:textStyle="bold"
             android:layout_marginBottom="8dp" />
 
@@ -28,6 +28,8 @@
             android:id="@+id/tv_memo_content"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="4"
             android:textSize="14sp"
             android:textColor="@color/color_text_dark"
             android:visibility="gone" />

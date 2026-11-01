@@ -17,6 +17,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import java.util.List;
 
 import kr.akotis.todonote.R;
+import kr.akotis.todonote.activity.MainActivity;
 import kr.akotis.todonote.adapter.MessageAdapter;
 import kr.akotis.todonote.database.DatabaseHelper;
 import kr.akotis.todonote.model.MessageItem;
@@ -144,6 +145,9 @@ public class MessageFragment extends Fragment {
         // 페이지에 들어오면 모든 메시지를 읽음 처리
         dbHelper.markAllMessagesAsRead();
         loadMessages();
+        if (getActivity() instanceof MainActivity) {
+            ((MainActivity) getActivity()).updateNotificationBadge();
+        }
     }
 
     @Override

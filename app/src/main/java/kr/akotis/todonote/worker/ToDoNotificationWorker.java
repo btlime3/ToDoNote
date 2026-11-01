@@ -5,7 +5,6 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
-import android.os.Build;
 
 import androidx.core.app.NotificationCompat;
 import androidx.work.Worker;
@@ -50,7 +49,7 @@ public class ToDoNotificationWorker extends Worker {
         // 알림 클릭 시 앱 열기
         Intent intent = new Intent(getApplicationContext(), MainActivity.class);
         intent.putExtra("fragment", "todo");
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         PendingIntent pendingIntent = PendingIntent.getActivity(
                 getApplicationContext(),
                 (int) todoId,
@@ -60,7 +59,7 @@ public class ToDoNotificationWorker extends Worker {
         // 알림 생성
         NotificationCompat.Builder builder = new NotificationCompat.Builder(
                 getApplicationContext(), CHANNEL_ID)
-                .setSmallIcon(R.mipmap.ic_main) // 앱 아이콘 사용
+                .setSmallIcon(R.drawable.ic_notification) // 상태 표시줄 아이콘은 단색 모양만 쓰인다
                 .setContentTitle(todo.getTitle())
                 .setContentText(todo.getDetail() != null && !todo.getDetail().isEmpty() 
                         ? todo.getDetail() 
@@ -70,14 +69,12 @@ public class ToDoNotificationWorker extends Worker {
                 .setAutoCancel(true)
                 .setDefaults(NotificationCompat.DEFAULT_ALL); // 소리, 진동, LED 등 기본 설정 사용
 
-        // 알림 권한 확인 (Android 13 이상)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (androidx.core.content.ContextCompat.checkSelfPermission(
-                    getApplicationContext(), 
-                    android.Manifest.permission.POST_NOTIFICATIONS) 
-                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                return Result.success(); // 권한이 없어도 Worker는 성공으로 처리
-            }
+        // 알림 권한 확인
+        if (androidx.core.content.ContextCompat.checkSelfPermission(
+                getApplicationContext(),
+                android.Manifest.permission.POST_NOTIFICATIONS)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            return Result.success(); // 권한이 없어도 Worker는 성공으로 처리
         }
         
         // 알림 표시
@@ -93,22 +90,20 @@ public class ToDoNotificationWorker extends Worker {
     }
 
     private void createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            CharSequence name = "ToDo 알림";
-            String description = "할 일 알림 채널";
-            // IMPORTANCE_HIGH로 설정하여 알림이 더 확실하게 표시되도록 함
-            int importance = NotificationManager.IMPORTANCE_HIGH;
-            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, name, importance);
-            channel.setDescription(description);
-            // 소리와 진동 활성화
-            channel.enableLights(true);
-            channel.enableVibration(true);
+        CharSequence name = "ToDo 알림";
+        String description = "할 일 알림 채널";
+        // IMPORTANCE_HIGH로 설정하여 알림이 더 확실하게 표시되도록 함
+        int importance = NotificationManager.IMPORTANCE_HIGH;
+        NotificationChannel channel = new NotificationChannel(CHANNEL_ID, name, importance);
+        channel.setDescription(description);
+        // 소리와 진동 활성화
+        channel.enableLights(true);
+        channel.enableVibration(true);
 
-            NotificationManager notificationManager = getApplicationContext()
-                    .getSystemService(NotificationManager.class);
-            if (notificationManager != null) {
-                notificationManager.createNotificationChannel(channel);
-            }
+        NotificationManager notificationManager = getApplicationContext()
+                .getSystemService(NotificationManager.class);
+        if (notificationManager != null) {
+            notificationManager.createNotificationChannel(channel);
         }
     }
 }

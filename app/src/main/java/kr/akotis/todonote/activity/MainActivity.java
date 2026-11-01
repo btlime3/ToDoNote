@@ -1,6 +1,5 @@
 package kr.akotis.todonote.activity;
 
-import android.app.AlertDialog;
 import android.content.ComponentName;
 import android.content.ContentResolver;
 import android.content.ContentValues;
@@ -9,17 +8,16 @@ import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.MediaStore;
 import android.view.View;
 import android.view.Window;
 import android.widget.ImageView;
-import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.activity.EdgeToEdge;
+import androidx.activity.OnBackPressedCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
@@ -38,8 +36,6 @@ import android.Manifest;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.content.SharedPreferences;
-import android.content.pm.PackageManager;
-import android.net.Uri;
 import android.os.PowerManager;
 import android.provider.Settings;
 
@@ -103,6 +99,7 @@ public class MainActivity extends AppCompatActivity {
     private static final String KEY_FIRST_BIOMETRIC_AUTH = "first_biometric_auth";
     private static final String KEY_BACKUP_RESTORED = "backup_restored";
     private static final String KEY_TESTER_MODE_ENABLED = "tester_mode_enabled";
+    private static final String STATE_APP_UNLOCKED = "app_unlocked";
     private boolean isAppUnlocked = false;
     private int notificationTapCount = 0;
     private static final int TESTER_MODE_TAP_COUNT = 20;
@@ -113,7 +110,8 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         EdgeToEdge.enable(this);
-        
+        isAppUnlocked = savedInstanceState != null && savedInstanceState.getBoolean(STATE_APP_UNLOCKED);
+
         // 상태 바 색상을 검정색으로 설정
         Window window = getWindow();
         window.setStatusBarColor(Color.BLACK);
@@ -144,6 +142,7 @@ public class MainActivity extends AppCompatActivity {
         setupDrawer();
         setupBottomNavigation();
         setupWindowInsets();
+        setupBackNavigation();
         setupImportLauncher();
         setupNotificationPermission();
         
@@ -159,13 +158,31 @@ public class MainActivity extends AppCompatActivity {
         notifyIfDatabaseWasDamaged();
         
         // 앱 잠금 확인
-        if (isAppLockEnabled() && dbHelper.hasNotePassword() && !isAppUnlocked) {
+        if (isAppLockRequired()) {
+            // 인증 전에는 복원된 화면의 내용이 보이지 않게 가린다.
+            findViewById(R.id.fragment_container).setVisibility(View.INVISIBLE);
             showAppLockAuthDialog();
             return; // 인증 전까지 화면 로드 중단
         }
 
-        // Intent에서 fragment 파라미터 확인 (위젯에서 호출된 경우 또는 FCM 알림에서 호출된 경우)
-        loadInitialFragment(savedInstanceState);
+        loadInitialFragment();
+    }
+
+    private boolean isAppLockRequired() {
+        return isAppLockEnabled() && dbHelper.hasNotePassword() && !isAppUnlocked;
+    }
+
+    @Override
+    protected void onSaveInstanceState(@NonNull Bundle outState) {
+        super.onSaveInstanceState(outState);
+        // 화면 회전처럼 계속 사용 중일 때만 잠금 해제 상태를 이어 간다. 앱이 종료되었다면 다시 인증한다.
+        outState.putBoolean(STATE_APP_UNLOCKED, isAppUnlocked && isChangingConfigurations());
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        dbHelper.close();
     }
 
     @Override
@@ -173,47 +190,53 @@ public class MainActivity extends AppCompatActivity {
         super.onNewIntent(intent);
         setIntent(intent); // 새로운 Intent 설정
 
+        // 잠금 해제 전이면 인증 뒤 loadInitialFragment가 이 Intent를 처리한다.
+        if (isAppLockRequired()) {
+            return;
+        }
+
         // 알림 클릭으로 인한 Fragment 이동 처리
         String fragmentName = intent.getStringExtra("fragment");
-        if ("todo".equals(fragmentName)) {
+        boolean toToDo = "todo".equals(fragmentName);
+        if (!toToDo && !"message".equals(fragmentName)) {
+            return;
+        }
+        FragmentManager fragmentManager = getSupportFragmentManager();
+        if (fragmentManager.getBackStackEntryCount() > 0) {
+            // 노트 편집이나 검색 중이면 그 위에 열어 뒤로가기로 돌아갈 수 있게 한다.
+            fragmentManager.beginTransaction()
+                    .replace(R.id.fragment_container, toToDo ? new ToDoFragment() : new MessageFragment())
+                    .addToBackStack(null)
+                    .commit();
+        } else if (toToDo) {
             bottomNav.setSelectedItemId(R.id.nav_todo);
-        } else if ("message".equals(fragmentName)) {
-            handleFcmNotificationIntent(intent);
-            loadFragment(new MessageFragment());
-            bottomNav.setSelectedItemId(-1);
+        } else {
+            showMessages();
         }
     }
 
-    private void loadInitialFragment(Bundle savedInstanceState) {
+    private void loadInitialFragment() {
+        findViewById(R.id.fragment_container).setVisibility(View.VISIBLE);
+        // 시스템이 복원한 화면이 있으면 그대로 둔다. 시작 Intent를 다시 적용하면 보던 화면을 잃는다.
+        if (getSupportFragmentManager().findFragmentById(R.id.fragment_container) != null) {
+            return;
+        }
         String fragmentName = getIntent().getStringExtra("fragment");
-        if (fragmentName != null) {
-            if (fragmentName.equals("todo")) {
-                bottomNav.setSelectedItemId(R.id.nav_todo);
-            } else if (fragmentName.equals("message")) {
-                // FCM 알림에서 왔는지 확인하고 메시지 저장
-                handleFcmNotificationIntent(getIntent());
-                loadFragment(new kr.akotis.todonote.fragment.MessageFragment());
-                // 메시지 탭은 네비게이션 메뉴에 없으므로 선택 해제
-                bottomNav.setSelectedItemId(-1);
-            } else if (savedInstanceState == null) {
-                bottomNav.setSelectedItemId(R.id.nav_memo);
-            }
-        } else if (savedInstanceState == null) {
+        if ("todo".equals(fragmentName)) {
+            bottomNav.setSelectedItemId(R.id.nav_todo);
+        } else if ("message".equals(fragmentName)) {
+            // 알림 화면에서 뒤로 가면 메모 탭으로 돌아가도록 탭 표시만 맞춘다.
+            bottomNav.setOnItemSelectedListener(null);
+            bottomNav.setSelectedItemId(R.id.nav_memo);
+            bottomNav.setOnItemSelectedListener(this::onBottomNavItemSelected);
+            showMessages();
+        } else {
             // 기본 화면을 메모 탭으로 설정 (탭 선택 리스너가 화면을 불러온다)
             bottomNav.setSelectedItemId(R.id.nav_memo);
         }
     }
 
     /**
-     * FCM 알림 클릭으로 인한 Intent 처리
-     * data payload만 사용하므로 onMessageReceived에서 이미 저장됨
-     */
-    private void handleFcmNotificationIntent(Intent intent) {
-        // data payload만 사용하므로 onMessageReceived에서 이미 저장됨
-        // 별도 처리 불필요
-    }
-
-/**
      * 암호 힌트를 포함한 메시지를 생성합니다.
      */
     private String buildPasswordMessage(String baseMessage) {
@@ -233,6 +256,13 @@ public class MainActivity extends AppCompatActivity {
     private void setAppLockEnabled(boolean enabled) {
         android.content.SharedPreferences prefs = getSharedPreferences(PREF_APP_LOCK, MODE_PRIVATE);
         prefs.edit().putBoolean(KEY_APP_LOCK_ENABLED, enabled).apply();
+        // 방금 설정한 사람이 사용 중이므로 회전만으로 다시 묻지 않는다.
+        isAppUnlocked = enabled;
+    }
+
+    private boolean canUseBiometric() {
+        return BiometricManager.from(this).canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK)
+                == BiometricManager.BIOMETRIC_SUCCESS;
     }
     
     private void showAppLockAuthDialog() {
@@ -241,19 +271,17 @@ public class MainActivity extends AppCompatActivity {
         boolean isBackupRestored = prefs.getBoolean(KEY_BACKUP_RESTORED, false);
         boolean isFirstBiometricAuth = prefs.getBoolean(KEY_FIRST_BIOMETRIC_AUTH, true);
 
-        // 백업 복원 시 또는 첫 지문 인증 시에는 암호 입력으로만 인증
+        // 백업 복원 후에는 암호 입력으로만 인증
         if (isBackupRestored) {
             showPasswordInputForAppUnlock();
             return;
         }
 
-        // 지문 인증 사용 가능 여부 확인
-        BiometricManager biometricManager = BiometricManager.from(this);
-        boolean canUseBiometric = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK) == BiometricManager.BIOMETRIC_SUCCESS;
+        boolean canUseBiometric = canUseBiometric();
 
         if (canUseBiometric && !isFirstBiometricAuth) {
             // 일반 지문 인증
-            authenticateForAppUnlock(true);
+            authenticateForAppUnlock();
         } else if (canUseBiometric && isFirstBiometricAuth) {
             // 첫 지문 인증 시: 지문 인증 후 암호 확인
             authenticateForFirstBiometricAuth();
@@ -263,11 +291,11 @@ public class MainActivity extends AppCompatActivity {
         }
     }
     
-    private void authenticateForAppUnlock(boolean showPasswordOnCancel) {
+    private void authenticateForAppUnlock() {
         BiometricPrompt.PromptInfo promptInfo = new BiometricPrompt.PromptInfo.Builder()
                 .setTitle("앱 잠금 해제")
                 .setSubtitle("지문을 인식하여 앱을 잠금 해제하세요")
-                .setNegativeButtonText(showPasswordOnCancel ? "암호 입력" : "취소")
+                .setNegativeButtonText("암호 입력")
                 .build();
 
         BiometricPrompt biometricPrompt = new BiometricPrompt(
@@ -278,27 +306,17 @@ public class MainActivity extends AppCompatActivity {
                     public void onAuthenticationSucceeded(@NonNull BiometricPrompt.AuthenticationResult result) {
                         super.onAuthenticationSucceeded(result);
                         isAppUnlocked = true;
-                        loadInitialFragment(null);
+                        loadInitialFragment();
                     }
 
                     @Override
                     public void onAuthenticationError(int errorCode, @NonNull CharSequence errString) {
                         super.onAuthenticationError(errorCode, errString);
-                        if (errorCode == BiometricPrompt.ERROR_USER_CANCELED || 
-                            errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON) {
-                            if (showPasswordOnCancel) {
-                                showPasswordInputForAppUnlock();
-                            } else {
-                                finish(); // 앱 종료
-                            }
-                        } else {
+                        if (errorCode != BiometricPrompt.ERROR_USER_CANCELED
+                                && errorCode != BiometricPrompt.ERROR_NEGATIVE_BUTTON) {
                             Toast.makeText(MainActivity.this, "지문 인증 실패: " + errString, Toast.LENGTH_SHORT).show();
-                            if (showPasswordOnCancel) {
-                                showPasswordInputForAppUnlock();
-                            } else {
-                                finish();
-                            }
                         }
+                        showPasswordInputForAppUnlock();
                     }
 
                     @Override
@@ -339,6 +357,10 @@ public class MainActivity extends AppCompatActivity {
                             showPasswordInputForBiometricVerification();
                         } else {
                             Toast.makeText(MainActivity.this, "지문 인증 실패: " + errString, Toast.LENGTH_SHORT).show();
+                            // 인증 수단 없이 남으면 잠금을 거치지 않고 탭과 메뉴를 쓸 수 있게 된다.
+                            if (!isFinishing() && !isDestroyed()) {
+                                showPasswordInputForBiometricVerification();
+                            }
                         }
                     }
 
@@ -364,11 +386,7 @@ public class MainActivity extends AppCompatActivity {
         // 힌트 표시
         String message = buildPasswordMessage("지문 인증을 사용하려면 암호를 확인해주세요.");
 
-        // 지문 인증 사용 가능 여부 확인
-        BiometricManager biometricManager = BiometricManager.from(this);
-        boolean canUseBiometric = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK) == BiometricManager.BIOMETRIC_SUCCESS;
-
-        if (!canUseBiometric) {
+        if (!canUseBiometric()) {
             btnFingerprint.setVisibility(View.GONE);
         }
 
@@ -391,7 +409,7 @@ public class MainActivity extends AppCompatActivity {
 
                     isAppUnlocked = true;
                     dialog.dismiss();
-                    loadInitialFragment(null);
+                    loadInitialFragment();
                 } else {
                     Toast.makeText(this, "암호가 올바르지 않습니다.", Toast.LENGTH_SHORT).show();
                 }
@@ -418,11 +436,7 @@ public class MainActivity extends AppCompatActivity {
         // 힌트 표시
         String message = buildPasswordMessage("앱을 사용하려면 암호를 입력해주세요.");
 
-        // 지문 인증 사용 가능 여부 확인
-        BiometricManager biometricManager = BiometricManager.from(this);
-        boolean canUseBiometric = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK) == BiometricManager.BIOMETRIC_SUCCESS;
-
-        if (!canUseBiometric) {
+        if (!canUseBiometric()) {
             btnFingerprint.setVisibility(View.GONE);
         }
 
@@ -439,9 +453,13 @@ public class MainActivity extends AppCompatActivity {
             dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
                 String password = etPassword.getText() != null ? etPassword.getText().toString() : "";
                 if (dbHelper.verifyNotePassword(password)) {
+                    // 복원한 백업의 암호를 확인했으므로 다음부터 지문 등록 절차로 돌아간다.
+                    getSharedPreferences(PREF_APP_LOCK, MODE_PRIVATE).edit()
+                            .putBoolean(KEY_BACKUP_RESTORED, false)
+                            .apply();
                     isAppUnlocked = true;
                     dialog.dismiss();
-                    loadInitialFragment(null);
+                    loadInitialFragment();
                 } else {
                     Toast.makeText(this, "암호가 올바르지 않습니다.", Toast.LENGTH_SHORT).show();
                 }
@@ -451,7 +469,7 @@ public class MainActivity extends AppCompatActivity {
         // 지문 인증 버튼 클릭
         btnFingerprint.setOnClickListener(v -> {
             dialog.dismiss();
-            authenticateForAppUnlock(true);
+            authenticateForAppUnlock();
         });
 
         dialog.show();
@@ -580,7 +598,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
     
-    private void updateNotificationBadge() {
+    public void updateNotificationBadge() {
         if (notificationMenuItem != null && dbHelper != null) {
             // 테스터 모드가 아니면 아이콘 숨기기
             if (!isTesterModeEnabled()) {
@@ -647,72 +665,65 @@ public class MainActivity extends AppCompatActivity {
     }
     
     private void checkAndRequestNotificationPermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) 
-                    != PackageManager.PERMISSION_GRANTED) {
-                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS);
-            }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS);
         }
     }
     
     private void createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            String channelId = "todo_notification_channel";
-            CharSequence name = "ToDo 알림";
-            String description = "할 일 알림 채널";
-            int importance = NotificationManager.IMPORTANCE_HIGH;
-            NotificationChannel channel = new NotificationChannel(channelId, name, importance);
-            channel.setDescription(description);
-            channel.enableLights(true);
-            channel.enableVibration(true);
-            
-            NotificationManager notificationManager = getSystemService(NotificationManager.class);
-            if (notificationManager != null) {
-                notificationManager.createNotificationChannel(channel);
-            }
+        String channelId = "todo_notification_channel";
+        CharSequence name = "ToDo 알림";
+        String description = "할 일 알림 채널";
+        int importance = NotificationManager.IMPORTANCE_HIGH;
+        NotificationChannel channel = new NotificationChannel(channelId, name, importance);
+        channel.setDescription(description);
+        channel.enableLights(true);
+        channel.enableVibration(true);
+
+        NotificationManager notificationManager = getSystemService(NotificationManager.class);
+        if (notificationManager != null) {
+            notificationManager.createNotificationChannel(channel);
         }
     }
     
     private void checkAndRequestBatteryOptimization() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
-            if (powerManager != null && !powerManager.isIgnoringBatteryOptimizations(getPackageName())) {
-                // SharedPreferences로 한 번만 표시하도록 체크
-                SharedPreferences prefs = getSharedPreferences("app_prefs", MODE_PRIVATE);
-                boolean batteryOptShown = prefs.getBoolean("battery_opt_dialog_shown", false);
-                
-                if (!batteryOptShown) {
-                    // 배터리 최적화 해제 요청 다이얼로그 표시
-                    new MaterialAlertDialogBuilder(this)
-                            .setTitle("배터리 최적화 해제")
-                            .setMessage("알림이 정상적으로 작동하려면 배터리 최적화를 해제해야 합니다.\n설정으로 이동하시겠습니까?")
-                            .setPositiveButton("설정으로 이동", (dialog, which) -> {
-                                try {
-                                    Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
-                                    intent.setData(Uri.parse("package:" + getPackageName()));
-                                    startActivity(intent);
-                                } catch (Exception e) {
-                                    // 일부 기기에서는 ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS가 지원되지 않을 수 있음
-                                    // 대신 일반 설정 화면으로 이동
-                                    try {
-                                        Intent intent = new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
-                                        startActivity(intent);
-                                    } catch (Exception ex) {
-                                android.util.Log.e("MainActivity", "배터리 최적화 설정 화면을 열 수 없습니다.", ex);
-                            }
-                        }
-                        // 다이얼로그 표시 여부 저장
-                        prefs.edit().putBoolean("battery_opt_dialog_shown", true).apply();
-                    })
-                    .setNegativeButton("나중에", (dialog, which) -> {
-                        // 나중에 선택해도 다이얼로그 표시 여부 저장
-                        prefs.edit().putBoolean("battery_opt_dialog_shown", true).apply();
-                    })
-                    .setCancelable(false)
-                    .show();
-                }
-            }
+        PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
+        if (powerManager == null || powerManager.isIgnoringBatteryOptimizations(getPackageName())) {
+            return;
         }
+        // SharedPreferences로 한 번만 표시하도록 체크
+        SharedPreferences prefs = getSharedPreferences("app_prefs", MODE_PRIVATE);
+        if (prefs.getBoolean("battery_opt_dialog_shown", false)) {
+            return;
+        }
+        // 배터리 최적화 해제 요청 다이얼로그 표시
+        new MaterialAlertDialogBuilder(this)
+                .setTitle("배터리 최적화 해제")
+                .setMessage("알림이 정상적으로 작동하려면 배터리 최적화를 해제해야 합니다.\n설정으로 이동하시겠습니까?")
+                .setPositiveButton("설정으로 이동", (dialog, which) -> {
+                    try {
+                        Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+                        intent.setData(Uri.parse("package:" + getPackageName()));
+                        startActivity(intent);
+                    } catch (Exception e) {
+                        // 일부 기기에서는 ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS가 지원되지 않을 수 있음
+                        // 대신 일반 설정 화면으로 이동
+                        try {
+                            startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
+                        } catch (Exception ex) {
+                            android.util.Log.e("MainActivity", "배터리 최적화 설정 화면을 열 수 없습니다.", ex);
+                        }
+                    }
+                    // 다이얼로그 표시 여부 저장
+                    prefs.edit().putBoolean("battery_opt_dialog_shown", true).apply();
+                })
+                .setNegativeButton("나중에", (dialog, which) -> {
+                    // 나중에 선택해도 다이얼로그 표시 여부 저장
+                    prefs.edit().putBoolean("battery_opt_dialog_shown", true).apply();
+                })
+                .setCancelable(false)
+                .show();
     }
 
     private void setupToolbar() {
@@ -765,33 +776,26 @@ public class MainActivity extends AppCompatActivity {
         // FCM 토큰 가져오기
         FirebaseMessaging.getInstance().getToken()
                 .addOnCompleteListener(task -> {
-                    String tokenText;
-                    String messageText;
-                    
-                    if (task.isSuccessful()) {
-                        String token = task.getResult();
-                        tokenText = token;
-                        messageText = "알림 수신을 위해 해당 FCM 토큰 값을 관리자에게 전달해 주세요!\n\n" + token;
-                    } else {
-                        tokenText = "";
-                        messageText = "토큰을 가져올 수 없습니다.";
+                    // 토큰을 받는 동안 화면이 닫혔으면 다이얼로그를 띄울 수 없다.
+                    if (isFinishing() || isDestroyed()) {
+                        return;
                     }
-                    
-                    final String finalToken = tokenText;
-                    
-                    AlertDialog.Builder builder = new AlertDialog.Builder(this);
-                    builder.setTitle("FCM 토큰 확인")
+                    String token = task.isSuccessful() ? task.getResult() : "";
+                    String messageText = task.isSuccessful()
+                            ? "알림 수신을 위해 해당 FCM 토큰 값을 관리자에게 전달해 주세요!\n\n" + token
+                            : "토큰을 가져올 수 없습니다.";
+
+                    new MaterialAlertDialogBuilder(this)
+                            .setTitle("FCM 토큰 확인")
                             .setMessage(messageText)
                             .setPositiveButton("복사", (dialog, which) -> {
-                                if (!finalToken.isEmpty()) {
+                                if (!token.isEmpty()) {
                                     ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-                                    ClipData clip = ClipData.newPlainText("FCM Token", finalToken);
-                                    clipboard.setPrimaryClip(clip);
+                                    clipboard.setPrimaryClip(ClipData.newPlainText("FCM Token", token));
                                     Toast.makeText(this, "FCM 토큰이 복사되었습니다.", Toast.LENGTH_SHORT).show();
                                 }
                             })
-                            .setNegativeButton("확인", null)
-                            .create()
+                            .setNegativeButton("닫기", null)
                             .show();
                 });
     }
@@ -802,27 +806,49 @@ public class MainActivity extends AppCompatActivity {
             PackageInfo packageInfo = getPackageManager().getPackageInfo(getPackageName(), 0);
             versionName = packageInfo.versionName;
         } catch (PackageManager.NameNotFoundException e) {
-            e.printStackTrace();
+            android.util.Log.w("MainActivity", "Could not read version", e);
         }
 
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("정보")
-                .setMessage("ToDoNote\n버전: " + versionName + "\n\n할 일과 메모를 한 곳에서 관리하는 간편한 앱입니다.\n\n개발자 문의: github.com/btlime3/ToDoNote/issues")
+        new MaterialAlertDialogBuilder(this)
+                .setTitle("정보")
+                .setMessage("ToDoNote\n버전: " + versionName + "\n\n메모, 노트, 할 일, 알림을 한 곳에서 관리하는 앱입니다.\n\n개발자 문의: github.com/btlime3/ToDoNote/issues")
                 .setPositiveButton("확인", null)
-                .create()
                 .show();
     }
 
     // 하단 NavBar 생성
     private void setupBottomNavigation() {
         bottomNav = findViewById(R.id.bottom_nav);
-        bottomNav.setOnItemSelectedListener(item -> {
-            Fragment fragment = getFragmentForItem(item.getItemId());
-            if (fragment != null) {
-                loadFragment(fragment);
-                return true;
+        bottomNav.setOnItemSelectedListener(this::onBottomNavItemSelected);
+    }
+
+    private boolean onBottomNavItemSelected(@NonNull MenuItem item) {
+        Fragment fragment = getFragmentForItem(item.getItemId());
+        if (fragment != null) {
+            loadFragment(fragment);
+            return true;
+        }
+        return false;
+    }
+
+    /** 드로어에서 연 화면은 뒤로가기로 앱을 나가지 않고 현재 탭으로 돌아간다. */
+    private void setupBackNavigation() {
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                FragmentManager fragmentManager = getSupportFragmentManager();
+                Fragment current = fragmentManager.findFragmentById(R.id.fragment_container);
+                boolean openedFromMenu = current instanceof TrashFragment
+                        || current instanceof MessageFragment
+                        || current instanceof CompletedToDoFragment;
+                if (openedFromMenu && fragmentManager.getBackStackEntryCount() == 0) {
+                    bottomNav.setSelectedItemId(bottomNav.getSelectedItemId());
+                    return;
+                }
+                setEnabled(false);
+                getOnBackPressedDispatcher().onBackPressed();
+                setEnabled(true);
             }
-            return false;
         });
     }
 
@@ -1163,34 +1189,29 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showPasswordSettingsDialog() {
-        DatabaseHelper dbHelper = new DatabaseHelper(this);
-        boolean hasPassword = dbHelper.hasNotePassword();
-        
-        if (hasPassword) {
-            // 암호가 이미 설정되어 있는 경우: 기존 암호 확인 먼저
-            showPasswordVerificationDialog(dbHelper);
-        } else {
+        if (!dbHelper.hasNotePassword()) {
             // 암호가 설정되지 않은 경우: 바로 설정 다이얼로그 표시
-            showPasswordSetupDialog(dbHelper);
-        }
-        dbHelper.close();
-    }
-
-    private void showPasswordVerificationDialog(DatabaseHelper dbHelper) {
-        // 지문 인증 사용 가능 여부 확인
-        BiometricManager biometricManager = BiometricManager.from(this);
-        boolean canUseBiometric = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK) == BiometricManager.BIOMETRIC_SUCCESS;
-        
-        if (canUseBiometric) {
+            showPasswordSetupDialog();
+        } else if (canUseBiometric()) {
             // 지문 인증이 가능하면 먼저 지문 인증 시도
-            authenticateWithBiometricForSettings(dbHelper, true);
+            authenticateWithBiometricForSettings(true);
         } else {
             // 지문 인증이 불가능하면 암호 입력 다이얼로그 표시
-            showPasswordInputDialogForSettings(dbHelper);
+            showPasswordInputDialogForSettings();
         }
     }
 
-    private void showPasswordInputDialogForSettings(DatabaseHelper dbHelper) {
+    /** 입력이 틀려도 입력한 내용이 사라지지 않도록, 확인 버튼은 성공할 때만 다이얼로그를 닫는다. */
+    private void keepOpenUntilSuccess(androidx.appcompat.app.AlertDialog dialog, java.util.function.BooleanSupplier onConfirm) {
+        dialog.setOnShowListener(shown ->
+                dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+                    if (onConfirm.getAsBoolean()) {
+                        dialog.dismiss();
+                    }
+                }));
+    }
+
+    private void showPasswordInputDialogForSettings() {
         View dialogView = getLayoutInflater().inflate(R.layout.dialog_password, null);
         TextInputLayout passwordLayout = dialogView.findViewById(R.id.password_layout);
         TextInputEditText etPassword = dialogView.findViewById(R.id.et_password);
@@ -1201,11 +1222,7 @@ public class MainActivity extends AppCompatActivity {
         // 힌트 표시
         String message = buildPasswordMessage("암호 설정을 변경하려면 기존 암호를 입력해주세요.");
 
-        // 지문 인증 사용 가능 여부 확인
-        BiometricManager biometricManager = BiometricManager.from(this);
-        boolean canUseBiometric = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK) == BiometricManager.BIOMETRIC_SUCCESS;
-
-        if (!canUseBiometric) {
+        if (!canUseBiometric()) {
             btnFingerprint.setVisibility(View.GONE);
         }
 
@@ -1213,28 +1230,31 @@ public class MainActivity extends AppCompatActivity {
                 .setTitle("암호 확인")
                 .setMessage(message)
                 .setView(dialogView)
-                .setPositiveButton("확인", (d, which) -> {
-                    String password = etPassword.getText() != null ? etPassword.getText().toString() : "";
-                    if (dbHelper.verifyNotePassword(password)) {
-                        // 암호가 맞으면 설정/변경/제거 다이얼로그 표시
-                        showPasswordChangeDialog(dbHelper);
-                    } else {
-                        Toast.makeText(this, "암호가 올바르지 않습니다.", Toast.LENGTH_SHORT).show();
-                    }
-                })
+                .setPositiveButton("확인", null)
                 .setNegativeButton("취소", null)
                 .create();
+
+        keepOpenUntilSuccess(dialog, () -> {
+            String password = etPassword.getText() != null ? etPassword.getText().toString() : "";
+            if (dbHelper.verifyNotePassword(password)) {
+                // 암호가 맞으면 설정/변경/제거 다이얼로그 표시
+                showPasswordChangeDialog();
+                return true;
+            }
+            Toast.makeText(this, "암호가 올바르지 않습니다.", Toast.LENGTH_SHORT).show();
+            return false;
+        });
 
         // 지문 인증 버튼 클릭
         btnFingerprint.setOnClickListener(v -> {
             dialog.dismiss();
-            authenticateWithBiometricForSettings(dbHelper, false);
+            authenticateWithBiometricForSettings(false);
         });
 
         dialog.show();
     }
 
-    private void authenticateWithBiometricForSettings(DatabaseHelper dbHelper, boolean showPasswordOnCancel) {
+    private void authenticateWithBiometricForSettings(boolean showPasswordOnCancel) {
         BiometricPrompt.PromptInfo promptInfo = new BiometricPrompt.PromptInfo.Builder()
                 .setTitle("지문 인증")
                 .setSubtitle("지문을 인식하여 암호 설정에 접근하세요")
@@ -1249,24 +1269,18 @@ public class MainActivity extends AppCompatActivity {
                     public void onAuthenticationSucceeded(@NonNull BiometricPrompt.AuthenticationResult result) {
                         super.onAuthenticationSucceeded(result);
                         // 지문 인증 성공 시 암호 변경 다이얼로그 표시
-                        showPasswordChangeDialog(dbHelper);
+                        showPasswordChangeDialog();
                     }
 
                     @Override
                     public void onAuthenticationError(int errorCode, @NonNull CharSequence errString) {
                         super.onAuthenticationError(errorCode, errString);
-                        if (errorCode == BiometricPrompt.ERROR_USER_CANCELED || 
-                            errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON) {
-                            // 사용자가 취소하거나 "암호 입력" 버튼을 누른 경우
-                            if (showPasswordOnCancel) {
-                                showPasswordInputDialogForSettings(dbHelper);
-                            }
-                        } else {
+                        if (errorCode != BiometricPrompt.ERROR_USER_CANCELED
+                                && errorCode != BiometricPrompt.ERROR_NEGATIVE_BUTTON) {
                             Toast.makeText(MainActivity.this, "지문 인증 실패: " + errString, Toast.LENGTH_SHORT).show();
-                            if (showPasswordOnCancel) {
-                                // 오류 발생 시에도 암호 입력 다이얼로그 표시
-                                showPasswordInputDialogForSettings(dbHelper);
-                            }
+                        }
+                        if (showPasswordOnCancel) {
+                            showPasswordInputDialogForSettings();
                         }
                     }
 
@@ -1281,7 +1295,7 @@ public class MainActivity extends AppCompatActivity {
         biometricPrompt.authenticate(promptInfo);
     }
 
-    private void showPasswordSetupDialog(DatabaseHelper dbHelper) {
+    private void showPasswordSetupDialog() {
         View dialogView = getLayoutInflater().inflate(R.layout.dialog_password_settings, null);
         TextInputLayout passwordLayout = dialogView.findViewById(R.id.password_layout);
         TextInputLayout confirmPasswordLayout = dialogView.findViewById(R.id.confirm_password_layout);
@@ -1294,33 +1308,37 @@ public class MainActivity extends AppCompatActivity {
         confirmPasswordLayout.setHint("암호 확인");
         cbAppLock.setChecked(isAppLockEnabled());
 
-        new MaterialAlertDialogBuilder(this)
+        androidx.appcompat.app.AlertDialog dialog = new MaterialAlertDialogBuilder(this)
                 .setTitle("암호 설정")
                 .setView(dialogView)
-                .setPositiveButton("설정", (dialog, which) -> {
-                    String password = etPassword.getText() != null ? etPassword.getText().toString() : "";
-                    String confirmPassword = etConfirmPassword.getText() != null ? etConfirmPassword.getText().toString() : "";
-                    String hint = etHint.getText() != null ? etHint.getText().toString().trim() : "";
-
-                    if (password.isEmpty()) {
-                        Toast.makeText(this, "암호를 입력해주세요.", Toast.LENGTH_SHORT).show();
-                        return;
-                    }
-
-                    if (!password.equals(confirmPassword)) {
-                        Toast.makeText(this, "암호가 일치하지 않습니다.", Toast.LENGTH_SHORT).show();
-                        return;
-                    }
-
-                    dbHelper.setNotePassword(password, hint.isEmpty() ? null : hint);
-                    setAppLockEnabled(cbAppLock.isChecked());
-                    Toast.makeText(this, "암호가 설정되었습니다.", Toast.LENGTH_SHORT).show();
-                })
+                .setPositiveButton("설정", null)
                 .setNegativeButton("취소", null)
-                .show();
+                .create();
+
+        keepOpenUntilSuccess(dialog, () -> {
+            String password = etPassword.getText() != null ? etPassword.getText().toString() : "";
+            String confirmPassword = etConfirmPassword.getText() != null ? etConfirmPassword.getText().toString() : "";
+            String hint = etHint.getText() != null ? etHint.getText().toString().trim() : "";
+
+            if (password.isEmpty()) {
+                Toast.makeText(this, "암호를 입력해주세요.", Toast.LENGTH_SHORT).show();
+                return false;
+            }
+            if (!password.equals(confirmPassword)) {
+                Toast.makeText(this, "암호가 일치하지 않습니다.", Toast.LENGTH_SHORT).show();
+                return false;
+            }
+
+            dbHelper.setNotePassword(password, hint.isEmpty() ? null : hint);
+            setAppLockEnabled(cbAppLock.isChecked());
+            Toast.makeText(this, "암호가 설정되었습니다.", Toast.LENGTH_SHORT).show();
+            return true;
+        });
+
+        dialog.show();
     }
 
-    private void showPasswordChangeDialog(DatabaseHelper dbHelper) {
+    private void showPasswordChangeDialog() {
         View dialogView = getLayoutInflater().inflate(R.layout.dialog_password_settings, null);
         TextInputLayout passwordLayout = dialogView.findViewById(R.id.password_layout);
         TextInputLayout confirmPasswordLayout = dialogView.findViewById(R.id.confirm_password_layout);
@@ -1339,36 +1357,16 @@ public class MainActivity extends AppCompatActivity {
             etHint.setText(existingHint);
         }
 
-        MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(this)
+        androidx.appcompat.app.AlertDialog dialog = new MaterialAlertDialogBuilder(this)
                 .setTitle("암호 설정")
                 .setView(dialogView)
-                .setPositiveButton("저장", (dialog, which) -> {
-                    String password = etPassword.getText() != null ? etPassword.getText().toString() : "";
-                    String confirmPassword = etConfirmPassword.getText() != null ? etConfirmPassword.getText().toString() : "";
-                    String hint = etHint.getText() != null ? etHint.getText().toString().trim() : "";
-
-                    // 암호 변경 (비어있지 않은 경우에만)
-                    if (!password.isEmpty()) {
-                        if (!password.equals(confirmPassword)) {
-                            Toast.makeText(this, "암호가 일치하지 않습니다.", Toast.LENGTH_SHORT).show();
-                            return;
-                        }
-                        dbHelper.setNotePassword(password, hint.isEmpty() ? null : hint);
-                    } else if (!hint.isEmpty() || (existingHint != null && !existingHint.equals(hint))) {
-                        // 암호는 변경하지 않고 힌트만 변경
-                        dbHelper.setNotePasswordHint(hint);
-                    }
-
-                    // 앱 잠금 설정 저장
-                    setAppLockEnabled(cbAppLock.isChecked());
-                    Toast.makeText(this, "설정이 저장되었습니다.", Toast.LENGTH_SHORT).show();
-                })
+                .setPositiveButton("저장", null)
                 .setNegativeButton("취소", null)
-                .setNeutralButton("암호 제거", (dialog, which) -> {
+                .setNeutralButton("암호 제거", (d, which) -> {
                     new MaterialAlertDialogBuilder(this)
                             .setTitle("암호 제거")
                             .setMessage("암호를 제거하시겠습니까?\n\n• 모든 잠금된 노트는 잠금 해제됩니다.\n• 앱 실행 시 잠금도 해제됩니다.")
-                            .setPositiveButton("제거", (d, w) -> {
+                            .setPositiveButton("제거", (confirm, w) -> {
                                 // 암호 해시를 지우고 휴지통을 포함한 모든 노트의 잠금을 해제
                                 dbHelper.removeNotePassword();
 
@@ -1379,9 +1377,30 @@ public class MainActivity extends AppCompatActivity {
                             })
                             .setNegativeButton("취소", null)
                             .show();
-                });
+                })
+                .create();
 
-        builder.show();
+        keepOpenUntilSuccess(dialog, () -> {
+            String password = etPassword.getText() != null ? etPassword.getText().toString() : "";
+            String confirmPassword = etConfirmPassword.getText() != null ? etConfirmPassword.getText().toString() : "";
+            String hint = etHint.getText() != null ? etHint.getText().toString().trim() : "";
+
+            if (!password.isEmpty()) {
+                if (!password.equals(confirmPassword)) {
+                    Toast.makeText(this, "암호가 일치하지 않습니다.", Toast.LENGTH_SHORT).show();
+                    return false;
+                }
+                dbHelper.setNotePassword(password, null);
+            }
+            // 비워 둔 힌트도 그대로 반영해 이전 힌트가 남지 않게 한다.
+            dbHelper.setNotePasswordHint(hint.isEmpty() ? null : hint);
+
+            // 앱 잠금 설정 저장
+            setAppLockEnabled(cbAppLock.isChecked());
+            Toast.makeText(this, "설정이 저장되었습니다.", Toast.LENGTH_SHORT).show();
+            return true;
+        });
+
+        dialog.show();
     }
 }
-

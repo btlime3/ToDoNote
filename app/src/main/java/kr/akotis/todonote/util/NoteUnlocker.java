@@ -70,18 +70,23 @@ public final class NoteUnlocker {
                 .setTitle("잠금 해제")
                 .setMessage(message)
                 .setView(dialogView)
-                .setPositiveButton("확인", (d, which) -> {
+                .setPositiveButton("확인", null)
+                .setNegativeButton("취소", null)
+                .create();
+
+        // 암호가 틀려도 다이얼로그를 닫지 않아 바로 다시 입력할 수 있다.
+        dialog.setOnShowListener(shown ->
+                dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
                     String password = etPassword.getText() != null ? etPassword.getText().toString() : "";
                     if (password.isEmpty()) {
                         toast("암호를 입력해주세요.");
                     } else if (dbHelper.verifyNotePassword(password)) {
+                        dialog.dismiss();
                         onUnlocked.run();
                     } else {
                         toast("암호가 올바르지 않습니다.");
                     }
-                })
-                .setNegativeButton("취소", null)
-                .create();
+                }));
 
         btnFingerprint.setOnClickListener(v -> {
             dialog.dismiss();

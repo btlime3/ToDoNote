@@ -4,11 +4,11 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Intent;
-import android.os.Build;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.core.app.NotificationCompat;
+import androidx.core.text.HtmlCompat;
 
 import com.google.firebase.messaging.FirebaseMessagingService;
 import com.google.firebase.messaging.RemoteMessage;
@@ -78,8 +78,8 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
         // 알림 클릭 시 MainActivity로 이동 (message fragment 열기)
         Intent intent = new Intent(this, MainActivity.class);
         intent.putExtra("fragment", "message");
-        intent.putExtra("from_fcm_notification", true);
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        // 실행 중인 화면을 새로 만들지 않고 onNewIntent로 전달받는다.
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
 
         // 고유한 requestCode 사용 (시간 기반)
         int requestCode = (int) System.currentTimeMillis();
@@ -90,19 +90,22 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
 
+        // 본문은 HTML이므로 태그가 그대로 보이지 않게 글자로 바꾼다.
+        CharSequence bodyText = HtmlCompat.fromHtml(body != null ? body : "", HtmlCompat.FROM_HTML_MODE_LEGACY);
+
         // 알림 생성
         NotificationCompat.Builder notificationBuilder = new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setSmallIcon(R.mipmap.ic_main) // 앱 아이콘 사용
+                .setSmallIcon(R.drawable.ic_notification) // 상태 표시줄 아이콘은 단색 모양만 쓰인다
                 .setContentTitle(title != null ? title : "새 알림")
-                .setContentText(body != null ? body : "")
+                .setContentText(bodyText)
                 .setAutoCancel(true)
                 .setContentIntent(pendingIntent)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setDefaults(NotificationCompat.DEFAULT_ALL);
 
         // 긴 본문인 경우 BigTextStyle 사용
-        if (body != null && body.length() > 50) {
-            notificationBuilder.setStyle(new NotificationCompat.BigTextStyle().bigText(body));
+        if (bodyText.length() > 50) {
+            notificationBuilder.setStyle(new NotificationCompat.BigTextStyle().bigText(bodyText));
         }
 
         NotificationManager notificationManager =
@@ -116,20 +119,18 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
     }
 
     private void createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            CharSequence name = "FCM 알림";
-            String description = "서버에서 전송된 알림";
-            int importance = NotificationManager.IMPORTANCE_HIGH;
-            
-            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, name, importance);
-            channel.setDescription(description);
-            channel.enableLights(true);
-            channel.enableVibration(true);
-            
-            NotificationManager notificationManager = getSystemService(NotificationManager.class);
-            if (notificationManager != null) {
-                notificationManager.createNotificationChannel(channel);
-            }
+        CharSequence name = "FCM 알림";
+        String description = "서버에서 전송된 알림";
+        int importance = NotificationManager.IMPORTANCE_HIGH;
+
+        NotificationChannel channel = new NotificationChannel(CHANNEL_ID, name, importance);
+        channel.setDescription(description);
+        channel.enableLights(true);
+        channel.enableVibration(true);
+
+        NotificationManager notificationManager = getSystemService(NotificationManager.class);
+        if (notificationManager != null) {
+            notificationManager.createNotificationChannel(channel);
         }
     }
 }

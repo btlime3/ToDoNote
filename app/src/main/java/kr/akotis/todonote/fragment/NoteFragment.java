@@ -6,6 +6,7 @@ import android.text.TextWatcher;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.fragment.app.Fragment;
@@ -37,6 +38,7 @@ public class NoteFragment extends Fragment {
     private DatabaseHelper dbHelper;
     private NoteAdapter noteAdapter;
     private List<NoteItem> allNotes;
+    private TextView tvEmpty;
 
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
@@ -45,6 +47,7 @@ public class NoteFragment extends Fragment {
 
         dbHelper = new DatabaseHelper(requireContext());
         recyclerNote = view.findViewById(R.id.recycler_note);
+        tvEmpty = view.findViewById(R.id.tv_note_empty);
         etSearch = view.findViewById(R.id.et_search);
         etSearch.setHint("노트 검색...");
         fabNote = view.findViewById(R.id.fab_note);
@@ -157,6 +160,7 @@ public class NoteFragment extends Fragment {
         SearchQuery query = SearchQuery.parse(rawQuery);
         if (query.isEmpty()) {
             noteAdapter.setNotes(allNotes);
+            updateEmptyMessage(query);
             return;
         }
 
@@ -172,6 +176,15 @@ public class NoteFragment extends Fragment {
         }
 
         noteAdapter.setNotes(filtered);
+        updateEmptyMessage(query);
+    }
+
+    private void updateEmptyMessage(SearchQuery query) {
+        boolean empty = noteAdapter.getItemCount() == 0;
+        tvEmpty.setVisibility(empty ? View.VISIBLE : View.GONE);
+        if (empty) {
+            tvEmpty.setText(query.isEmpty() ? "+ 버튼을 눌러 첫 노트를 작성해보세요." : "검색 결과가 없습니다.");
+        }
     }
 
     @Override

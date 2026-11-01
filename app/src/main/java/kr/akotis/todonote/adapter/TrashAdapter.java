@@ -8,6 +8,7 @@ import android.widget.ImageView;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
+import androidx.core.text.HtmlCompat;
 import androidx.recyclerview.widget.RecyclerView;
 
 import java.text.SimpleDateFormat;
@@ -150,12 +151,17 @@ public class TrashAdapter extends RecyclerView.Adapter<TrashAdapter.TrashViewHol
                 tvNoteTitle.setVisibility(View.GONE);
                 tvNoteContent.setVisibility(View.GONE);
                 layoutLocked.setVisibility(View.GONE);
+                // 다른 항목에 쓰이던 행을 재사용해도 이전 알림이 남지 않게 한다.
+                tvMessageTitle.setVisibility(View.GONE);
+                tvMessageBody.setVisibility(View.GONE);
                 tvMemoContent.setText(memo.getContent());
                 tvDeletedDate.setText("삭제된 날짜: " + dateFormat.format(memo.getDeletedAt()));
             } else if (trashItem.getType() == TrashItem.TYPE_NOTE) {
                 NoteItem note = (NoteItem) trashItem.getItem();
                 tvItemType.setText("노트");
                 tvMemoContent.setVisibility(View.GONE);
+                tvMessageTitle.setVisibility(View.GONE);
+                tvMessageBody.setVisibility(View.GONE);
                 tvNoteTitle.setVisibility(View.VISIBLE);
                 tvNoteTitle.setText(note.getTitle() != null && !note.getTitle().isEmpty() ? note.getTitle() : "제목 없음");
                 
@@ -181,7 +187,9 @@ public class TrashAdapter extends RecyclerView.Adapter<TrashAdapter.TrashViewHol
                 tvMessageBody.setVisibility(View.VISIBLE);
                 layoutLocked.setVisibility(View.GONE);
                 tvMessageTitle.setText(message.getTitle() != null && !message.getTitle().isEmpty() ? message.getTitle() : "제목 없음");
-                tvMessageBody.setText(message.getBody() != null && !message.getBody().isEmpty() ? message.getBody() : "내용 없음");
+                // 알림 본문은 HTML이므로 태그가 그대로 보이지 않게 글자로 바꾼다.
+                tvMessageBody.setText(message.getBody() != null && !message.getBody().isEmpty()
+                        ? HtmlCompat.fromHtml(message.getBody(), HtmlCompat.FROM_HTML_MODE_LEGACY) : "내용 없음");
                 tvDeletedDate.setText("삭제된 날짜: " + dateFormat.format(message.getDeletedAt()));
             }
         }
