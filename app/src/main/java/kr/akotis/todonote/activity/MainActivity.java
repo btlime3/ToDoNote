@@ -31,6 +31,7 @@ import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.fragment.app.Fragment;
+import androidx.fragment.app.FragmentManager;
 
 import android.Manifest;
 import android.app.NotificationChannel;
@@ -155,7 +156,6 @@ public class MainActivity extends AppCompatActivity {
         // 알림 클릭으로 인한 Fragment 이동 처리
         String fragmentName = intent.getStringExtra("fragment");
         if ("todo".equals(fragmentName)) {
-            loadFragment(new ToDoFragment());
             bottomNav.setSelectedItemId(R.id.nav_todo);
         } else if ("message".equals(fragmentName)) {
             handleFcmNotificationIntent(intent);
@@ -168,7 +168,6 @@ public class MainActivity extends AppCompatActivity {
         String fragmentName = getIntent().getStringExtra("fragment");
         if (fragmentName != null) {
             if (fragmentName.equals("todo")) {
-                loadFragment(new ToDoFragment());
                 bottomNav.setSelectedItemId(R.id.nav_todo);
             } else if (fragmentName.equals("message")) {
                 // FCM 알림에서 왔는지 확인하고 메시지 저장
@@ -177,12 +176,10 @@ public class MainActivity extends AppCompatActivity {
                 // 메시지 탭은 네비게이션 메뉴에 없으므로 선택 해제
                 bottomNav.setSelectedItemId(-1);
             } else if (savedInstanceState == null) {
-                loadFragment(new MemoFragment());
                 bottomNav.setSelectedItemId(R.id.nav_memo);
             }
         } else if (savedInstanceState == null) {
-            // 기본 화면을 메모 탭으로 설정
-            loadFragment(new MemoFragment());
+            // 기본 화면을 메모 탭으로 설정 (탭 선택 리스너가 화면을 불러온다)
             bottomNav.setSelectedItemId(R.id.nav_memo);
         }
     }
@@ -788,7 +785,10 @@ public class MainActivity extends AppCompatActivity {
 
     // Fragment 로딩
     private void loadFragment(Fragment fragment) {
-        getSupportFragmentManager().beginTransaction()
+        FragmentManager fragmentManager = getSupportFragmentManager();
+        // 쌓여 있는 편집 화면을 정리해 뒤로가기가 이미 떠난 화면으로 돌아가지 않게 한다.
+        fragmentManager.popBackStackImmediate(null, FragmentManager.POP_BACK_STACK_INCLUSIVE);
+        fragmentManager.beginTransaction()
                 .replace(R.id.fragment_container, fragment)
                 .commit();
     }

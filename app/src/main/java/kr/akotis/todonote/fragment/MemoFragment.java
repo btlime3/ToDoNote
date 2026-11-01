@@ -3,13 +3,16 @@ package kr.akotis.todonote.fragment;
 import android.app.AlertDialog;
 import android.os.Bundle;
 import android.text.Editable;
+import android.text.TextWatcher;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.Toast;
 
+import androidx.activity.OnBackPressedCallback;
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.graphics.Insets;
@@ -19,6 +22,7 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.material.button.MaterialButton;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.android.material.textfield.TextInputEditText;
 
@@ -27,11 +31,15 @@ import java.util.List;
 import kr.akotis.todonote.R;
 import kr.akotis.todonote.adapter.MemoAdapter;
 import kr.akotis.todonote.database.DatabaseHelper;
+import kr.akotis.todonote.model.DraftItem;
 import kr.akotis.todonote.model.MemoItem;
+import kr.akotis.todonote.util.DebouncedRunner;
 
 import static android.content.Context.INPUT_METHOD_SERVICE;
 
 public class MemoFragment extends Fragment {
+
+    private static final long DRAFT_SAVE_DELAY_MS = 1500;
 
     private FloatingActionButton fabMemo;
     private View inputContainer;
@@ -43,6 +51,10 @@ public class MemoFragment extends Fragment {
     private RecyclerView recyclerMemo;
     private MemoAdapter memoAdapter;
     private MemoItem editingMemo;
+    private DebouncedRunner draftSaver;
+    private OnBackPressedCallback backCallback;
+    /** 키보드가 실제로 열렸다가 닫힌 경우만 구분하기 위한 상태. */
+    private boolean keyboardWasVisible;
 
     public MemoFragment() {
         // Required empty public constructor
@@ -54,6 +66,7 @@ public class MemoFragment extends Fragment {
         View view = inflater.inflate(R.layout.fragment_memo, container, false);
 
         dbHelper = new DatabaseHelper(requireContext());
+        draftSaver = new DebouncedRunner(DRAFT_SAVE_DELAY_MS, this::saveDraftNow);
 
         // 하단 NavBar 참조
         if (getActivity() != null) {
@@ -78,16 +91,119 @@ public class MemoFragment extends Fragment {
         // 메모 목록 로드
         loadMemos();
 
-        fabMemo.setOnClickListener(v -> showInputContainer());
+        fabMemo.setOnClickListener(v -> showInputContainer(true));
 
         btnSave.setOnClickListener(v -> saveMemo());
 
-        btnCancel.setOnClickListener(v -> hideInputContainer());
+        btnCancel.setOnClickListener(v -> requestCloseInput());
+
+        etMemoInput.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {
+                draftSaver.schedule();
+            }
+        });
 
         // 키보드가 올라올 때 입력창이 키보드 위에 위치하도록 설정
-        setupKeyboardInsets(view);
+        setupKeyboardInsets();
 
         return view;
+    }
+
+    @Override
+    public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
+        super.onViewCreated(view, savedInstanceState);
+        backCallback = new OnBackPressedCallback(false) {
+            @Override
+            public void handleOnBackPressed() {
+                requestCloseInput();
+            }
+        };
+        requireActivity().getOnBackPressedDispatcher().addCallback(getViewLifecycleOwner(), backCallback);
+        restoreDraft(savedInstanceState == null);
+    }
+
+    @Override
+    public void onPause() {
+        super.onPause();
+        // 다른 앱으로 전환한 뒤 시스템이 앱을 종료해도 내용이 남도록 바로 기록한다.
+        draftSaver.cancel();
+        saveDraftNow();
+    }
+
+    /** 입력창이 열려 있는 동안 저장되지 않은 내용을 임시 저장본으로 유지한다. */
+    private void saveDraftNow() {
+        if (inputContainer.getVisibility() != View.VISIBLE) {
+            return;
+        }
+        if (hasUnsavedInput()) {
+            long targetId = editingMemo != null ? editingMemo.getId() : DatabaseHelper.DRAFT_NEW_ITEM;
+            dbHelper.saveMemoDraft(targetId, currentInput());
+        } else {
+            dbHelper.deleteMemoDraft();
+        }
+    }
+
+    private void restoreDraft(boolean notifyUser) {
+        DraftItem draft = dbHelper.getMemoDraft();
+        if (draft == null) {
+            return;
+        }
+        if (draft.getContent().trim().isEmpty()) {
+            dbHelper.deleteMemoDraft();
+            return;
+        }
+        // 수정하던 메모가 그 사이 삭제되었으면 내용을 잃지 않도록 새 메모로 이어서 쓴다.
+        MemoItem target = draft.getTargetId() != DatabaseHelper.DRAFT_NEW_ITEM
+                ? dbHelper.getMemoById(draft.getTargetId()) : null;
+        editingMemo = target != null && target.getDeletedAt() == 0 ? target : null;
+        if (editingMemo != null && draft.getContent().trim().equals(editingMemo.getContent().trim())) {
+            editingMemo = null;
+            dbHelper.deleteMemoDraft();
+            return;
+        }
+        etMemoInput.setText(draft.getContent());
+        etMemoInput.setSelection(draft.getContent().length());
+        showInputContainer(false);
+        if (notifyUser) {
+            Toast.makeText(requireContext(), "작성 중이던 메모를 불러왔습니다.", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private String currentInput() {
+        return etMemoInput.getText() != null ? etMemoInput.getText().toString() : "";
+    }
+
+    private boolean hasUnsavedInput() {
+        String original = editingMemo != null ? editingMemo.getContent().trim() : "";
+        return !currentInput().trim().equals(original);
+    }
+
+    /** 닫기 버튼과 뒤로가기는 입력한 내용이 있으면 먼저 확인한다. */
+    private void requestCloseInput() {
+        if (!hasUnsavedInput()) {
+            discardInput();
+            return;
+        }
+        new MaterialAlertDialogBuilder(requireContext())
+                .setTitle("메모 작성 취소")
+                .setMessage("작성 중인 내용을 버리시겠습니까?")
+                .setPositiveButton("버리기", (dialog, which) -> discardInput())
+                .setNegativeButton("계속 작성", null)
+                .show();
+    }
+
+    private void discardInput() {
+        dbHelper.deleteMemoDraft();
+        hideInputContainer();
     }
 
     private void loadMemos() {
@@ -95,28 +211,35 @@ public class MemoFragment extends Fragment {
         memoAdapter.setMemos(memos);
     }
 
-    private void showInputContainer() {
+    private void showInputContainer(boolean showKeyboard) {
         inputContainer.setVisibility(View.VISIBLE);
-        etMemoInput.requestFocus();
-        
+        fabMemo.hide();
+        backCallback.setEnabled(true);
+
         // 하단 NavBar 숨기기
         if (bottomNav != null) {
             bottomNav.setVisibility(View.GONE);
         }
-        
-        // 키보드 표시
-        InputMethodManager imm = (InputMethodManager) requireContext().getSystemService(INPUT_METHOD_SERVICE);
-        if (imm != null) {
-            imm.showSoftInput(etMemoInput, InputMethodManager.SHOW_IMPLICIT);
+
+        if (showKeyboard) {
+            etMemoInput.requestFocus();
+            InputMethodManager imm = (InputMethodManager) requireContext().getSystemService(INPUT_METHOD_SERVICE);
+            if (imm != null) {
+                imm.showSoftInput(etMemoInput, InputMethodManager.SHOW_IMPLICIT);
+            }
         }
     }
 
     private void hideInputContainer() {
+        draftSaver.cancel();
         inputContainer.setVisibility(View.GONE);
         etMemoInput.setText("");
+        draftSaver.cancel(); // 위 setText로 예약된 저장을 취소
         etMemoInput.clearFocus();
         editingMemo = null; // 수정 모드 해제
-        
+        fabMemo.show();
+        backCallback.setEnabled(false);
+
         // 하단 NavBar 표시
         if (bottomNav != null) {
             bottomNav.setVisibility(View.VISIBLE);
@@ -157,7 +280,8 @@ public class MemoFragment extends Fragment {
                 loadMemos();
             }
         }
-        
+
+        dbHelper.deleteMemoDraft();
         hideInputContainer();
     }
 
@@ -240,11 +364,15 @@ public class MemoFragment extends Fragment {
     }
 
     private void editMemo(MemoItem memo) {
-        editingMemo = memo;
-        etMemoInput.setText(memo.getContent());
-        showInputContainer();
         // 목록 새로고침 (스와이프로 인해 제거된 항목 복원)
         loadMemos();
+        if (inputContainer.getVisibility() == View.VISIBLE && hasUnsavedInput()) {
+            Toast.makeText(requireContext(), "작성 중인 메모를 먼저 저장하거나 취소해주세요.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        editingMemo = memo;
+        etMemoInput.setText(memo.getContent());
+        showInputContainer(true);
         
         // 커서를 텍스트 끝에 위치시키기
         etMemoInput.post(() -> {
@@ -263,6 +391,10 @@ public class MemoFragment extends Fragment {
                 .setPositiveButton("삭제", (dialog, which) -> {
                     int result = dbHelper.deleteMemo(memo.getId());
                     if (result > 0) {
+                        if (editingMemo != null && editingMemo.getId() == memo.getId()) {
+                            // 수정 중이던 메모를 지웠으면 입력창도 함께 닫는다.
+                            discardInput();
+                        }
                         memoAdapter.removeMemo(position);
                         //Toast.makeText(requireContext(), "메모가 삭제되었습니다.", Toast.LENGTH_SHORT).show();
                     } else {
@@ -282,31 +414,34 @@ public class MemoFragment extends Fragment {
                 .show();
     }
 
-    private void setupKeyboardInsets(View view) {
+    private void setupKeyboardInsets() {
         ViewCompat.setOnApplyWindowInsetsListener(inputContainer, (v, insets) -> {
             Insets imeInsets = insets.getInsets(WindowInsetsCompat.Type.ime());
-            if (imeInsets.bottom > 0) {
-                // 키보드가 표시될 때 입력창을 키보드 위로 이동
-                ViewGroup.MarginLayoutParams params = (ViewGroup.MarginLayoutParams) v.getLayoutParams();
-                params.bottomMargin = imeInsets.bottom;
-                v.setLayoutParams(params);
-            } else {
-                // 키보드가 숨겨질 때 마진 제거 및 입력창 닫기
-                ViewGroup.MarginLayoutParams params = (ViewGroup.MarginLayoutParams) v.getLayoutParams();
-                params.bottomMargin = 0;
-                v.setLayoutParams(params);
-                
-                // 키보드가 닫혔을 때 입력창이 보이는 상태면 닫기
-                if (inputContainer.getVisibility() == View.VISIBLE) {
-                    hideInputContainer();
-                }
+            Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
+            // 키보드가 있으면 그 위에, 없으면 시스템 내비게이션 바 위에 입력창을 둔다.
+            ViewGroup.MarginLayoutParams params = (ViewGroup.MarginLayoutParams) v.getLayoutParams();
+            params.bottomMargin = Math.max(imeInsets.bottom, systemBars.bottom);
+            v.setLayoutParams(params);
+
+            boolean keyboardVisible = imeInsets.bottom > 0;
+            // 입력한 내용이 없을 때만 닫는다. 내용이 있으면 입력창과 함께 그대로 유지한다.
+            if (keyboardWasVisible && !keyboardVisible
+                    && inputContainer.getVisibility() == View.VISIBLE && !hasUnsavedInput()) {
+                discardInput();
             }
+            keyboardWasVisible = keyboardVisible;
             return insets;
         });
     }
 
     @Override
     public void onDestroyView() {
+        draftSaver.cancel();
+        saveDraftNow();
+        // 입력창을 연 채로 드로어 등으로 이동해도 다른 화면에서 하단 NavBar가 사라지지 않게 한다.
+        if (bottomNav != null) {
+            bottomNav.setVisibility(View.VISIBLE);
+        }
         super.onDestroyView();
         if (dbHelper != null) {
             dbHelper.close();

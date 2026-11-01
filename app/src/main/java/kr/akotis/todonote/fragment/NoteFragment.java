@@ -20,6 +20,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
+import com.google.android.material.snackbar.Snackbar;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
 
@@ -32,6 +33,8 @@ import kr.akotis.todonote.database.DatabaseHelper;
 import kr.akotis.todonote.model.NoteItem;
 
 public class NoteFragment extends Fragment {
+
+    private static final int NEW_NOTE_DRAFT_NOTICE_MS = 8000;
 
     private RecyclerView recyclerNote;
     private TextInputEditText etSearch;
@@ -162,6 +165,21 @@ public class NoteFragment extends Fragment {
     public void onResume() {
         super.onResume();
         loadNotes();
+        offerNewNoteDraft();
+    }
+
+    /** 작성하다 나간 새 노트는 목록에 없으므로 여기서 이어 쓸 수 있게 안내한다. */
+    private void offerNewNoteDraft() {
+        if (dbHelper.getNoteDraft(DatabaseHelper.DRAFT_NEW_ITEM) == null) {
+            return;
+        }
+        Snackbar.make(recyclerNote, "작성 중이던 새 노트가 있습니다.", NEW_NOTE_DRAFT_NOTICE_MS)
+                .setAnchorView(fabNote)
+                .setAction("이어 쓰기", v -> requireActivity().getSupportFragmentManager().beginTransaction()
+                        .replace(R.id.fragment_container, NoteEditFragment.newInstanceRestoringDraft())
+                        .addToBackStack(null)
+                        .commit())
+                .show();
     }
 
     private void showPasswordDialog(NoteItem note) {

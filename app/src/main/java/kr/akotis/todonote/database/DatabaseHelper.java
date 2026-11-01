@@ -24,6 +24,7 @@ import java.util.List;
 import java.io.File;
 import java.io.IOException;
 
+import kr.akotis.todonote.model.DraftItem;
 import kr.akotis.todonote.model.MemoItem;
 import kr.akotis.todonote.model.NoteItem;
 import kr.akotis.todonote.model.ToDoItem;
@@ -31,8 +32,11 @@ import kr.akotis.todonote.model.ToDoItem;
 public class DatabaseHelper extends SQLiteOpenHelper {
 
     private static final String DATABASE_NAME = "ToDoNote.db";
-    private static final int DATABASE_VERSION = 12;
+    private static final int DATABASE_VERSION = 13;
     public static final int MAX_STORED_MESSAGES = 30;
+
+    /** 임시 저장본의 대상이 아직 저장되지 않은 새 항목임을 나타낸다. 실제 ID는 1부터 시작한다. */
+    public static final long DRAFT_NEW_ITEM = 0;
     
     // 암호 설정 테이블
     private static final String TABLE_PASSWORD = "password_settings";
@@ -84,6 +88,23 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     private static final String COL_MESSAGE_RECEIVED_AT = "received_at";
     private static final String COL_MESSAGE_IS_READ = "is_read";
     private static final String COL_MESSAGE_DELETED_AT = "deleted_at";
+
+    // Draft 테이블 (저장하지 않은 편집 내용)
+    private static final String TABLE_DRAFT = "draft";
+    private static final String COL_DRAFT_TYPE = "draft_type";
+    private static final String COL_DRAFT_TARGET_ID = "target_id";
+    private static final String COL_DRAFT_TITLE = "title";
+    private static final String COL_DRAFT_CONTENT = "content";
+    private static final String COL_DRAFT_SAVED_AT = "saved_at";
+    private static final String DRAFT_TYPE_NOTE = "note";
+    private static final String DRAFT_TYPE_MEMO = "memo";
+    private static final String CREATE_DRAFT_TABLE = "CREATE TABLE IF NOT EXISTS " + TABLE_DRAFT + " (" +
+            COL_DRAFT_TYPE + " TEXT NOT NULL, " +
+            COL_DRAFT_TARGET_ID + " INTEGER NOT NULL, " +
+            COL_DRAFT_TITLE + " TEXT, " +
+            COL_DRAFT_CONTENT + " TEXT, " +
+            COL_DRAFT_SAVED_AT + " INTEGER, " +
+            "PRIMARY KEY (" + COL_DRAFT_TYPE + ", " + COL_DRAFT_TARGET_ID + "))";
 
     public DatabaseHelper(Context context) {
         this(context, DATABASE_NAME);
@@ -251,6 +272,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 COL_MESSAGE_IS_READ + " INTEGER DEFAULT 0, " +
                 COL_MESSAGE_DELETED_AT + " INTEGER)";
         db.execSQL(createMessageTable);
+
+        db.execSQL(CREATE_DRAFT_TABLE);
     }
 
     @Override
@@ -350,6 +373,10 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         if (oldVersion < 12) {
             // 암호 설정 테이블에 힌트 컬럼 추가
             db.execSQL("ALTER TABLE " + TABLE_PASSWORD + " ADD COLUMN " + COL_PASSWORD_HINT + " TEXT");
+        }
+        if (oldVersion < 13) {
+            // 저장하지 않은 편집 내용을 보관하는 테이블 추가
+            db.execSQL(CREATE_DRAFT_TABLE);
         }
     }
 
@@ -598,6 +625,36 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         return id;
     }
 
+    private MemoItem cursorToMemo(Cursor cursor) {
+        MemoItem memo = new MemoItem();
+        memo.setId(cursor.getLong(cursor.getColumnIndexOrThrow(COL_MEMO_ID)));
+        memo.setContent(cursor.getString(cursor.getColumnIndexOrThrow(COL_MEMO_CONTENT)));
+        memo.setCreatedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_MEMO_CREATED_AT)));
+        memo.setUpdatedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_MEMO_UPDATED_AT)));
+        int orderIndex = cursor.getColumnIndex(COL_MEMO_ORDER);
+        if (orderIndex >= 0) {
+            memo.setOrder(cursor.getInt(orderIndex));
+        }
+        int deletedAtIndex = cursor.getColumnIndex(COL_MEMO_DELETED_AT);
+        if (deletedAtIndex >= 0 && !cursor.isNull(deletedAtIndex)) {
+            memo.setDeletedAt(cursor.getLong(deletedAtIndex));
+        }
+        return memo;
+    }
+
+    public MemoItem getMemoById(long id) {
+        SQLiteDatabase db = this.getReadableDatabase();
+        MemoItem memo = null;
+        try (Cursor cursor = db.query(TABLE_MEMO, null, COL_MEMO_ID + " = ?",
+                new String[]{String.valueOf(id)}, null, null, null)) {
+            if (cursor.moveToFirst()) {
+                memo = cursorToMemo(cursor);
+            }
+        }
+        db.close();
+        return memo;
+    }
+
     public List<MemoItem> getAllMemos() {
         List<MemoItem> memoList = new ArrayList<>();
         SQLiteDatabase db = this.getReadableDatabase();
@@ -606,20 +663,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 
         if (cursor.moveToFirst()) {
             do {
-                MemoItem memo = new MemoItem();
-                memo.setId(cursor.getLong(cursor.getColumnIndexOrThrow(COL_MEMO_ID)));
-                memo.setContent(cursor.getString(cursor.getColumnIndexOrThrow(COL_MEMO_CONTENT)));
-                memo.setCreatedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_MEMO_CREATED_AT)));
-                memo.setUpdatedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_MEMO_UPDATED_AT)));
-                int orderIndex = cursor.getColumnIndex(COL_MEMO_ORDER);
-                if (orderIndex >= 0) {
-                    memo.setOrder(cursor.getInt(orderIndex));
-                }
-                int deletedAtIndex = cursor.getColumnIndex(COL_MEMO_DELETED_AT);
-                if (deletedAtIndex >= 0 && !cursor.isNull(deletedAtIndex)) {
-                    memo.setDeletedAt(cursor.getLong(deletedAtIndex));
-                }
-                memoList.add(memo);
+                memoList.add(cursorToMemo(cursor));
             } while (cursor.moveToNext());
         }
         cursor.close();
@@ -655,20 +699,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 
         if (cursor.moveToFirst()) {
             do {
-                MemoItem memo = new MemoItem();
-                memo.setId(cursor.getLong(cursor.getColumnIndexOrThrow(COL_MEMO_ID)));
-                memo.setContent(cursor.getString(cursor.getColumnIndexOrThrow(COL_MEMO_CONTENT)));
-                memo.setCreatedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_MEMO_CREATED_AT)));
-                memo.setUpdatedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_MEMO_UPDATED_AT)));
-                int orderIndex = cursor.getColumnIndex(COL_MEMO_ORDER);
-                if (orderIndex >= 0) {
-                    memo.setOrder(cursor.getInt(orderIndex));
-                }
-                int deletedAtIndex = cursor.getColumnIndex(COL_MEMO_DELETED_AT);
-                if (deletedAtIndex >= 0 && !cursor.isNull(deletedAtIndex)) {
-                    memo.setDeletedAt(cursor.getLong(deletedAtIndex));
-                }
-                memoList.add(memo);
+                memoList.add(cursorToMemo(cursor));
             } while (cursor.moveToNext());
         }
         cursor.close();
@@ -795,11 +826,18 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 
     public int deleteNote(long id) {
         SQLiteDatabase db = this.getWritableDatabase();
-        ContentValues values = new ContentValues();
-        values.put(COL_NOTE_DELETED_AT, System.currentTimeMillis());
-        int result = db.update(TABLE_NOTE, values, COL_NOTE_ID + " = ?", new String[]{String.valueOf(id)});
-        db.close();
-        return result;
+        db.beginTransaction();
+        try {
+            ContentValues values = new ContentValues();
+            values.put(COL_NOTE_DELETED_AT, System.currentTimeMillis());
+            int result = db.update(TABLE_NOTE, values, COL_NOTE_ID + " = ?", new String[]{String.valueOf(id)});
+            removeDraft(db, DRAFT_TYPE_NOTE, id);
+            db.setTransactionSuccessful();
+            return result;
+        } finally {
+            db.endTransaction();
+            db.close();
+        }
     }
 
     public List<NoteItem> getDeletedNotes() {
@@ -848,9 +886,16 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 
     public int permanentlyDeleteNote(long id) {
         SQLiteDatabase db = this.getWritableDatabase();
-        int result = db.delete(TABLE_NOTE, COL_NOTE_ID + " = ?", new String[]{String.valueOf(id)});
-        db.close();
-        return result;
+        db.beginTransaction();
+        try {
+            int result = db.delete(TABLE_NOTE, COL_NOTE_ID + " = ?", new String[]{String.valueOf(id)});
+            removeDraft(db, DRAFT_TYPE_NOTE, id);
+            db.setTransactionSuccessful();
+            return result;
+        } finally {
+            db.endTransaction();
+            db.close();
+        }
     }
 
     /**
@@ -1267,6 +1312,83 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             db.endTransaction();
             db.close();
         }
+    }
+
+    // ========== Draft (저장하지 않은 편집 내용) ==========
+
+    public void saveNoteDraft(long noteId, String title, String content) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        writeDraft(db, DRAFT_TYPE_NOTE, noteId, title, content);
+        db.close();
+    }
+
+    public DraftItem getNoteDraft(long noteId) {
+        SQLiteDatabase db = this.getReadableDatabase();
+        DraftItem draft = readDraft(db, COL_DRAFT_TYPE + " = ? AND " + COL_DRAFT_TARGET_ID + " = ?",
+                new String[]{DRAFT_TYPE_NOTE, String.valueOf(noteId)});
+        db.close();
+        return draft;
+    }
+
+    public void deleteNoteDraft(long noteId) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        removeDraft(db, DRAFT_TYPE_NOTE, noteId);
+        db.close();
+    }
+
+    /** 메모 입력창은 하나뿐이므로 임시 저장본도 하나만 유지한다. */
+    public void saveMemoDraft(long memoId, String content) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        db.beginTransaction();
+        try {
+            db.delete(TABLE_DRAFT, COL_DRAFT_TYPE + " = ?", new String[]{DRAFT_TYPE_MEMO});
+            writeDraft(db, DRAFT_TYPE_MEMO, memoId, null, content);
+            db.setTransactionSuccessful();
+        } finally {
+            db.endTransaction();
+            db.close();
+        }
+    }
+
+    public DraftItem getMemoDraft() {
+        SQLiteDatabase db = this.getReadableDatabase();
+        DraftItem draft = readDraft(db, COL_DRAFT_TYPE + " = ?", new String[]{DRAFT_TYPE_MEMO});
+        db.close();
+        return draft;
+    }
+
+    public void deleteMemoDraft() {
+        SQLiteDatabase db = this.getWritableDatabase();
+        db.delete(TABLE_DRAFT, COL_DRAFT_TYPE + " = ?", new String[]{DRAFT_TYPE_MEMO});
+        db.close();
+    }
+
+    private static void writeDraft(SQLiteDatabase db, String type, long targetId, String title, String content) {
+        ContentValues values = new ContentValues();
+        values.put(COL_DRAFT_TYPE, type);
+        values.put(COL_DRAFT_TARGET_ID, targetId);
+        values.put(COL_DRAFT_TITLE, title);
+        values.put(COL_DRAFT_CONTENT, content);
+        values.put(COL_DRAFT_SAVED_AT, System.currentTimeMillis());
+        db.insertWithOnConflict(TABLE_DRAFT, null, values, SQLiteDatabase.CONFLICT_REPLACE);
+    }
+
+    private static DraftItem readDraft(SQLiteDatabase db, String selection, String[] args) {
+        try (Cursor cursor = db.query(TABLE_DRAFT, null, selection, args, null, null, null, "1")) {
+            if (!cursor.moveToFirst()) {
+                return null;
+            }
+            return new DraftItem(
+                    cursor.getLong(cursor.getColumnIndexOrThrow(COL_DRAFT_TARGET_ID)),
+                    cursor.getString(cursor.getColumnIndexOrThrow(COL_DRAFT_TITLE)),
+                    cursor.getString(cursor.getColumnIndexOrThrow(COL_DRAFT_CONTENT)),
+                    cursor.getLong(cursor.getColumnIndexOrThrow(COL_DRAFT_SAVED_AT)));
+        }
+    }
+
+    private static void removeDraft(SQLiteDatabase db, String type, long targetId) {
+        db.delete(TABLE_DRAFT, COL_DRAFT_TYPE + " = ? AND " + COL_DRAFT_TARGET_ID + " = ?",
+                new String[]{type, String.valueOf(targetId)});
     }
 
     // ========== Message CRUD (FCM 알림) ==========
