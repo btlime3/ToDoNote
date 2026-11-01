@@ -46,8 +46,6 @@ import static android.content.Context.INPUT_METHOD_SERVICE;
 public class MemoFragment extends Fragment {
 
     private static final long DRAFT_SAVE_DELAY_MS = 1500;
-    private static final long FOCUS_HIGHLIGHT_MS = 2000;
-    private static final String ARG_FOCUS_MEMO_ID = "focus_memo_id";
 
     private FloatingActionButton fabMemo;
     private View inputContainer;
@@ -66,21 +64,11 @@ public class MemoFragment extends Fragment {
     private EditText etSearch;
     private TextView tvEmpty;
     private List<MemoItem> allMemos = new ArrayList<>();
-    /** 다른 화면을 열었다가 돌아오면 같은 Fragment로 뷰만 새로 만들어진다. */
-    private boolean viewCreatedBefore;
 
     public MemoFragment() {
         // Required empty public constructor
     }
 
-    /** 메모 탭을 열면서 지정한 메모로 이동해 잠시 강조한다. */
-    public static MemoFragment newInstance(long focusMemoId) {
-        MemoFragment fragment = new MemoFragment();
-        Bundle args = new Bundle();
-        args.putLong(ARG_FOCUS_MEMO_ID, focusMemoId);
-        fragment.setArguments(args);
-        return fragment;
-    }
 
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
@@ -174,27 +162,7 @@ public class MemoFragment extends Fragment {
             }
         };
         requireActivity().getOnBackPressedDispatcher().addCallback(getViewLifecycleOwner(), backCallback);
-        boolean firstView = savedInstanceState == null && !viewCreatedBefore;
-        viewCreatedBefore = true;
-        restoreDraft(firstView);
-        if (firstView) {
-            focusRequestedMemo();
-        }
-    }
-
-    private void focusRequestedMemo() {
-        long memoId = getArguments() != null ? getArguments().getLong(ARG_FOCUS_MEMO_ID, -1) : -1;
-        if (memoId == -1) {
-            return;
-        }
-        for (int i = 0; i < allMemos.size(); i++) {
-            if (allMemos.get(i).getId() == memoId) {
-                recyclerMemo.scrollToPosition(i);
-                memoAdapter.setFocusedMemoId(memoId);
-                recyclerMemo.postDelayed(() -> memoAdapter.setFocusedMemoId(-1), FOCUS_HIGHLIGHT_MS);
-                return;
-            }
-        }
+        restoreDraft(savedInstanceState == null);
     }
 
     @Override

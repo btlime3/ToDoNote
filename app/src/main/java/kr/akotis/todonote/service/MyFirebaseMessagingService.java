@@ -20,6 +20,8 @@ import kr.akotis.todonote.model.MessageItem;
 
 public class MyFirebaseMessagingService extends FirebaseMessagingService {
 
+    public static final String ACTION_MESSAGE_RECEIVED = "kr.akotis.todonote.MESSAGE_RECEIVED";
+
     private static final String TAG = "FCMService";
     private static final String CHANNEL_ID = "fcm_notification_channel";
 
@@ -62,6 +64,7 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
             MessageItem message = new MessageItem(title, body);
             dbHelper.insertMessage(message);
             dbHelper.close();
+            sendBroadcast(new Intent(ACTION_MESSAGE_RECEIVED).setPackage(getPackageName()));
         } catch (Exception e) {
             Log.e(TAG, "Failed to save message to database", e);
         }

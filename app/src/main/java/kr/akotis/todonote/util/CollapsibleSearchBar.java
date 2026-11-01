@@ -62,13 +62,6 @@ public final class CollapsibleSearchBar {
         });
     }
 
-    /** 검색 전용 화면에서는 접지 않는다. */
-    public static void attachAlwaysOpen(View root) {
-        CollapsibleSearchBar bar = new CollapsibleSearchBar(root);
-        bar.toggle.setVisibility(View.GONE);
-        bar.field.setVisibility(View.VISIBLE);
-    }
-
     private void show(boolean expanded) {
         field.setVisibility(expanded ? View.VISIBLE : View.GONE);
         arrow.setRotation(expanded ? 180 : 0);

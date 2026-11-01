@@ -142,6 +142,11 @@ public class MessageFragment extends Fragment {
     @Override
     public void onResume() {
         super.onResume();
+        refresh();
+    }
+
+    /** 화면을 보고 있는 동안 알림이 도착했을 때도 호출된다. */
+    public void refresh() {
         // 페이지에 들어오면 모든 메시지를 읽음 처리
         dbHelper.markAllMessagesAsRead();
         loadMessages();

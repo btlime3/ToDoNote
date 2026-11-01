@@ -37,13 +37,4 @@
     <!-- 아이콘 라인 (Outline) - 어두운 검은색 -->
     <color name="color_outline">#333333</color>
     
-    <!-- 달력 색상 -->
-    <color name="calendar_sunday">#E53935</color>
-    <color name="calendar_saturday">#1E88E5</color>
-    <color name="calendar_holiday">#E53935</color>
-    <color name="calendar_today_bg">#A0D9C8</color>
-    <color name="calendar_today_text">#FFFFFF</color>
-    <color name="calendar_has_todo">#F0D5C9</color>
-    <color name="calendar_has_todo_bg">#80F0D5C9</color>
-    <color name="calendar_selected">#C8E8DC</color>
 </resources>

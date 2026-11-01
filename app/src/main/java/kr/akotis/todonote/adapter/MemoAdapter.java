@@ -10,8 +10,6 @@ import androidx.annotation.NonNull;
 import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.RecyclerView;
 
-import com.google.android.material.card.MaterialCardView;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -25,7 +23,6 @@ public class MemoAdapter extends RecyclerView.Adapter<MemoAdapter.MemoViewHolder
 
     private List<MemoItem> memoList;
     private SearchQuery query;
-    private long focusedMemoId = -1;
 
     public MemoAdapter() {
         this.memoList = new ArrayList<>();
@@ -56,11 +53,6 @@ public class MemoAdapter extends RecyclerView.Adapter<MemoAdapter.MemoViewHolder
         notifyDataSetChanged();
     }
 
-    /** 검색 결과에서 고른 메모를 잠시 강조한다. -1이면 강조를 없앤다. */
-    public void setFocusedMemoId(long memoId) {
-        focusedMemoId = memoId;
-        notifyDataSetChanged();
-    }
 
     public void moveItem(int fromPosition, int toPosition) {
         if (fromPosition < toPosition) {
@@ -95,19 +87,15 @@ public class MemoAdapter extends RecyclerView.Adapter<MemoAdapter.MemoViewHolder
 
     class MemoViewHolder extends RecyclerView.ViewHolder {
         private TextView tvContent;
-        private MaterialCardView card;
 
         public MemoViewHolder(@NonNull View itemView) {
             super(itemView);
-            card = (MaterialCardView) itemView;
             tvContent = itemView.findViewById(R.id.tv_memo_content);
         }
 
         public void bind(MemoItem memo) {
             int highlight = ContextCompat.getColor(itemView.getContext(), R.color.color_accent);
             tvContent.setText(SearchHighlighter.highlight(memo.getContent(), query, highlight));
-            card.setCardBackgroundColor(ContextCompat.getColor(itemView.getContext(),
-                    memo.getId() == focusedMemoId ? R.color.color_accent_light : R.color.color_surface));
             // 링크 클릭을 위해 MovementMethod 설정
             tvContent.setMovementMethod(LinkMovementMethod.getInstance());
         }

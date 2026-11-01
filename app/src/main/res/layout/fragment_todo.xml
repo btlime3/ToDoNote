@@ -15,100 +15,70 @@
             android:layout_height="wrap_content"
             android:orientation="vertical">
 
-            <!-- 달력 컨테이너 -->
-            <com.google.android.material.card.MaterialCardView
+            <!-- 오늘의 정보 -->
+            <TextView
+                android:id="@+id/tv_today_date"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_margin="8dp"
-                app:cardCornerRadius="8dp"
-                app:cardElevation="2dp"
-                app:cardBackgroundColor="@color/color_surface">
+                android:layout_marginStart="16dp"
+                android:layout_marginTop="16dp"
+                android:layout_marginEnd="16dp"
+                android:textColor="@color/color_text_dark"
+                android:textSize="22sp"
+                android:textStyle="bold" />
 
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="16dp">
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:layout_marginTop="2dp"
+                android:layout_marginEnd="16dp"
+                android:layout_marginBottom="8dp"
+                android:text="오늘의 정보"
+                android:textColor="@color/color_text_medium"
+                android:textSize="14sp" />
 
-                    <!-- 월/년 표시 및 네비게이션 -->
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:gravity="center_vertical"
-                        android:layout_marginBottom="16dp">
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/recycler_today_info"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:nestedScrollingEnabled="false"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp" />
 
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btn_prev_month"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="◀"
-                            style="@style/Widget.MaterialComponents.Button.TextButton"
-                            android:minWidth="0dp"
-                            android:paddingStart="8dp"
-                            android:paddingEnd="8dp" />
+            <!-- 할 일 -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:layout_marginTop="16dp"
+                android:layout_marginEnd="16dp"
+                android:text="할 일"
+                android:textColor="@color/color_text_dark"
+                android:textSize="16sp"
+                android:textStyle="bold" />
 
-                        <TextView
-                            android:id="@+id/tv_month_year"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="2024년 1월"
-                            android:textSize="18sp"
-                            android:textStyle="bold"
-                            android:gravity="center"
-                            android:textColor="?attr/colorOnSurface" />
+            <TextView
+                android:id="@+id/tv_todo_empty"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:gravity="center"
+                android:text="남은 할 일이 없습니다."
+                android:textColor="@color/color_text_light"
+                android:textSize="14sp"
+                android:visibility="gone" />
 
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btn_next_month"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="▶"
-                            style="@style/Widget.MaterialComponents.Button.TextButton"
-                            android:minWidth="0dp"
-                            android:paddingStart="8dp"
-                            android:paddingEnd="8dp" />
-
-                    </LinearLayout>
-
-                    <!-- 요일 헤더 -->
-                    <GridLayout
-                        android:id="@+id/grid_weekdays"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:columnCount="7"
-                        android:layout_marginBottom="8dp" />
-
-                    <!-- 달력 그리드 -->
-                    <GridLayout
-                        android:id="@+id/grid_calendar"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:columnCount="7" />
-
-                    <!-- 상태 표시 -->
-                    <TextView
-                        android:id="@+id/tv_calendar_status"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="전체 일정"
-                        android:textSize="14sp"
-                        android:textStyle="bold"
-                        android:textColor="?attr/colorPrimary"
-                        android:gravity="center"
-                        android:paddingTop="16dp"
-                        android:paddingBottom="8dp" />
-
-                </LinearLayout>
-
-            </com.google.android.material.card.MaterialCardView>
-
-            <!-- ToDo 리스트 -->
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/recycler_todo"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:padding="8dp" />
+                android:clipToPadding="false"
+                android:nestedScrollingEnabled="false"
+                android:paddingStart="8dp"
+                android:paddingTop="8dp"
+                android:paddingEnd="8dp"
+                android:paddingBottom="88dp" />
 
         </LinearLayout>
 

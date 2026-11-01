@@ -42,34 +42,4 @@ public class SearchQueryTest {
         assertEquals(-1, SearchQuery.indexOf("abc", "abcd", 0));
         assertEquals(-1, SearchQuery.indexOf("abc", "abc", 1));
     }
-
-    @Test
-    public void shortTextIsFlattenedWithoutEllipsis() {
-        assertEquals("첫 줄 둘째 줄", SearchQuery.parse("둘째").excerpt("첫 줄\n\n둘째   줄", 100));
-    }
-
-    @Test
-    public void longTextShowsTheFirstMatch() {
-        String text = "가".repeat(100) + "찾는말" + "나".repeat(100);
-        String excerpt = SearchQuery.parse("찾는말").excerpt(text, 40);
-        assertTrue(excerpt.contains("찾는말"));
-        assertTrue(excerpt.startsWith("…"));
-        assertTrue(excerpt.endsWith("…"));
-        assertEquals(42, excerpt.length());
-    }
-
-    @Test
-    public void matchAtTheEndDoesNotOverrun() {
-        String text = "가".repeat(100) + "끝말";
-        String excerpt = SearchQuery.parse("끝말").excerpt(text, 40);
-        assertTrue(excerpt.endsWith("끝말"));
-        assertEquals(41, excerpt.length());
-    }
-
-    @Test
-    public void noMatchStartsFromTheBeginning() {
-        String excerpt = SearchQuery.parse("없는말").excerpt("가".repeat(100), 40);
-        assertTrue(excerpt.startsWith("가"));
-        assertTrue(excerpt.endsWith("…"));
-    }
 }

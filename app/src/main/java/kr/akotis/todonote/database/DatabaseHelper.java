@@ -38,7 +38,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     private static final int DATABASE_VERSION = 14;
     public static final int MAX_STORED_MESSAGES = 30;
     /** 노트 하나당 보관하는 이전 버전 개수. */
-    public static final int MAX_NOTE_VERSIONS = 30;
+    public static final int MAX_NOTE_VERSIONS = 10;
 
     /** SQLite 파일의 첫 16바이트. */
     private static final byte[] SQLITE_FILE_HEADER =

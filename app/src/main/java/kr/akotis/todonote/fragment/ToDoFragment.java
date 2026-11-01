@@ -10,7 +10,6 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.LinearLayout;
-import android.widget.GridLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -28,10 +27,9 @@ import com.google.android.material.textfield.TextInputEditText;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
-import java.util.HashSet;
+import java.util.Date;
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -46,30 +44,22 @@ import androidx.work.OneTimeWorkRequest;
 import androidx.work.WorkManager;
 
 import kr.akotis.todonote.R;
+import kr.akotis.todonote.adapter.TodayInfoAdapter;
 import kr.akotis.todonote.adapter.ToDoAdapter;
 import kr.akotis.todonote.database.DatabaseHelper;
 import kr.akotis.todonote.model.ToDoItem;
+import kr.akotis.todonote.model.TodayInfoItem;
 import kr.akotis.todonote.widget.ToDoWidgetProvider;
 import kr.akotis.todonote.worker.ToDoNotificationWorker;
 
 public class ToDoFragment extends Fragment {
 
-    private GridLayout gridCalendar;
-    private GridLayout gridWeekdays;
-    private TextView tvMonthYear;
-    private TextView tvCalendarStatus;
-    private MaterialButton btnPrevMonth;
-    private MaterialButton btnNextMonth;
     private RecyclerView recyclerTodo;
+    private TextView tvTodoEmpty;
     private FloatingActionButton fabTodo;
     private DatabaseHelper dbHelper;
     private ToDoAdapter todoAdapter;
     private ToDoItem editingTodo;
-    
-    private Calendar currentMonth;
-    private Calendar filteredDate; // 필터링된 날짜 (null이면 전체 보기)
-    private Set<Long> datesWithTodos;
-    private Set<String> koreanHolidays; // 한국 공휴일 (MM-dd 형식)
 
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
@@ -78,20 +68,11 @@ public class ToDoFragment extends Fragment {
 
         dbHelper = new DatabaseHelper(requireContext());
 
-        gridCalendar = view.findViewById(R.id.grid_calendar);
-        gridWeekdays = view.findViewById(R.id.grid_weekdays);
-        tvMonthYear = view.findViewById(R.id.tv_month_year);
-        tvCalendarStatus = view.findViewById(R.id.tv_calendar_status);
-        btnPrevMonth = view.findViewById(R.id.btn_prev_month);
-        btnNextMonth = view.findViewById(R.id.btn_next_month);
         recyclerTodo = view.findViewById(R.id.recycler_todo);
+        tvTodoEmpty = view.findViewById(R.id.tv_todo_empty);
         fabTodo = view.findViewById(R.id.fab_todo);
 
-        currentMonth = Calendar.getInstance();
-        filteredDate = null; // 전체 보기
-        datesWithTodos = new HashSet<>();
-        koreanHolidays = new HashSet<>();
-        initKoreanHolidays();
+        setupTodayInfo(view);
 
         // RecyclerView 설정
         todoAdapter = new ToDoAdapter();
@@ -102,232 +83,33 @@ public class ToDoFragment extends Fragment {
         // 스와이프 제스처 설정
         setupSwipeGesture();
 
-        // 달력 설정
-        setupCalendar();
-
         // ToDo 목록 로드
         loadToDos();
 
         fabTodo.setOnClickListener(v -> showToDoInputDialog(null));
 
-        btnPrevMonth.setOnClickListener(v -> {
-            currentMonth.add(Calendar.MONTH, -1);
-            updateCalendar();
-        });
-
-        btnNextMonth.setOnClickListener(v -> {
-            currentMonth.add(Calendar.MONTH, 1);
-            updateCalendar();
-        });
-
         return view;
     }
 
-    private void initKoreanHolidays() {
-        // 한국 공휴일 (고정 공휴일 - MM-dd 형식)
-        koreanHolidays.add("01-01"); // 신정
-        koreanHolidays.add("03-01"); // 삼일절
-        koreanHolidays.add("05-05"); // 어린이날
-        koreanHolidays.add("06-06"); // 현충일
-        koreanHolidays.add("08-15"); // 광복절
-        koreanHolidays.add("10-03"); // 개천절
-        koreanHolidays.add("10-09"); // 한글날
-        koreanHolidays.add("12-25"); // 성탄절
-        
-        // 2025년 음력 공휴일 (대체 공휴일 포함)
-        koreanHolidays.add("01-28"); // 설날 전날
-        koreanHolidays.add("01-29"); // 설날
-        koreanHolidays.add("01-30"); // 설날 다음날
-        koreanHolidays.add("05-05"); // 어린이날 (부처님오신날과 같은 날)
-        koreanHolidays.add("05-06"); // 대체공휴일
-        koreanHolidays.add("10-05"); // 추석 전날
-        koreanHolidays.add("10-06"); // 추석
-        koreanHolidays.add("10-07"); // 추석 다음날
-        koreanHolidays.add("10-08"); // 대체공휴일
-    }
-    
-    private boolean isKoreanHoliday(Calendar day) {
-        String dateKey = String.format(Locale.getDefault(), "%02d-%02d", 
-                day.get(Calendar.MONTH) + 1, day.get(Calendar.DAY_OF_MONTH));
-        return koreanHolidays.contains(dateKey);
+    private void setupTodayInfo(View view) {
+        TextView tvDate = view.findViewById(R.id.tv_today_date);
+        tvDate.setText(new SimpleDateFormat("M월 d일 EEEE", Locale.KOREAN).format(new Date()));
+
+        RecyclerView recyclerInfo = view.findViewById(R.id.recycler_today_info);
+        recyclerInfo.setLayoutManager(new LinearLayoutManager(requireContext()));
+        recyclerInfo.setAdapter(new TodayInfoAdapter(loadTodayInfo()));
     }
 
-    private void setupCalendar() {
-        // 요일 헤더 설정
-        String[] weekdays = {"일", "월", "화", "수", "목", "금", "토"};
-        int[] weekdayColors = {
-            getResources().getColor(R.color.calendar_sunday, null),    // 일요일 - 빨간색
-            0xFF444444, // 월요일
-            0xFF444444, // 화요일
-            0xFF444444, // 수요일
-            0xFF444444, // 목요일
-            0xFF444444, // 금요일
-            getResources().getColor(R.color.calendar_saturday, null)   // 토요일 - 파란색
-        };
-        
-        for (int i = 0; i < weekdays.length; i++) {
-            TextView tv = new TextView(requireContext());
-            tv.setText(weekdays[i]);
-            tv.setTextSize(12);
-            tv.setTextColor(weekdayColors[i]);
-            tv.setTypeface(null, android.graphics.Typeface.BOLD);
-            tv.setGravity(android.view.Gravity.CENTER);
-            GridLayout.LayoutParams params = new GridLayout.LayoutParams();
-            params.width = 0;
-            params.height = ViewGroup.LayoutParams.WRAP_CONTENT;
-            params.columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f);
-            tv.setLayoutParams(params);
-            gridWeekdays.addView(tv);
+    /**
+     * 오늘의 정보 목록. 지금은 화면 틀을 보여 주는 자리표시 항목이다.
+     * 어떤 정보를 보여 줄지 정해지면 이 메서드가 실제 정보를 돌려주도록 바꾼다.
+     */
+    private List<TodayInfoItem> loadTodayInfo() {
+        List<TodayInfoItem> items = new ArrayList<>();
+        for (int i = 1; i <= 3; i++) {
+            items.add(new TodayInfoItem("준비 중", "오늘의 정보 " + i, "연결할 정보를 정하면 이 자리에 표시됩니다."));
         }
-
-        updateCalendar();
-    }
-
-    private void updateCalendar() {
-        // 월/년 표시 업데이트
-        SimpleDateFormat monthFormat = new SimpleDateFormat("yyyy년 MM월", Locale.getDefault());
-        tvMonthYear.setText(monthFormat.format(currentMonth.getTime()));
-
-        // 달력 그리드 초기화
-        gridCalendar.removeAllViews();
-
-        // 현재 월의 첫 날과 마지막 날
-        Calendar firstDay = (Calendar) currentMonth.clone();
-        firstDay.set(Calendar.DAY_OF_MONTH, 1);
-        int firstDayOfWeek = firstDay.get(Calendar.DAY_OF_WEEK) - 1; // 일요일 = 0
-
-        Calendar lastDay = (Calendar) currentMonth.clone();
-        lastDay.set(Calendar.DAY_OF_MONTH, lastDay.getActualMaximum(Calendar.DAY_OF_MONTH));
-
-        // 오늘 날짜
-        Calendar today = Calendar.getInstance();
-
-        // 빈 칸 추가 (첫 날 이전)
-        for (int i = 0; i < firstDayOfWeek; i++) {
-            TextView empty = new TextView(requireContext());
-            GridLayout.LayoutParams params = new GridLayout.LayoutParams();
-            params.width = 0;
-            params.height = ViewGroup.LayoutParams.WRAP_CONTENT;
-            params.columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f);
-            empty.setLayoutParams(params);
-            gridCalendar.addView(empty);
-        }
-
-        // 날짜 추가
-        Calendar day = (Calendar) firstDay.clone();
-        while (day.get(Calendar.MONTH) == currentMonth.get(Calendar.MONTH)) {
-            TextView dayView = createDayView(day, today);
-            GridLayout.LayoutParams params = new GridLayout.LayoutParams();
-            params.width = 0;
-            params.height = ViewGroup.LayoutParams.WRAP_CONTENT;
-            params.columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f);
-            dayView.setLayoutParams(params);
-            gridCalendar.addView(dayView);
-
-            day.add(Calendar.DAY_OF_MONTH, 1);
-        }
-    }
-
-    private TextView createDayView(Calendar day, Calendar today) {
-        TextView dayView = new TextView(requireContext());
-        int dayOfMonth = day.get(Calendar.DAY_OF_MONTH);
-        int dayOfWeek = day.get(Calendar.DAY_OF_WEEK);
-        dayView.setText(String.valueOf(dayOfMonth));
-        dayView.setTextSize(16);
-        dayView.setGravity(android.view.Gravity.CENTER);
-        dayView.setPadding(12, 20, 12, 20);
-        dayView.setMinHeight((int) (48 * getResources().getDisplayMetrics().density));
-
-        // 날짜 키 생성 (년월일만)
-        Calendar dateKey = (Calendar) day.clone();
-        dateKey.set(Calendar.HOUR_OF_DAY, 0);
-        dateKey.set(Calendar.MINUTE, 0);
-        dateKey.set(Calendar.SECOND, 0);
-        dateKey.set(Calendar.MILLISECOND, 0);
-        long dateKeyLong = dateKey.getTimeInMillis();
-
-        boolean isToday = day.get(Calendar.YEAR) == today.get(Calendar.YEAR) &&
-            day.get(Calendar.MONTH) == today.get(Calendar.MONTH) &&
-            day.get(Calendar.DAY_OF_MONTH) == today.get(Calendar.DAY_OF_MONTH);
-        
-        boolean hasTodos = datesWithTodos.contains(dateKeyLong);
-        boolean isSelected = filteredDate != null &&
-            day.get(Calendar.YEAR) == filteredDate.get(Calendar.YEAR) &&
-            day.get(Calendar.MONTH) == filteredDate.get(Calendar.MONTH) &&
-            day.get(Calendar.DAY_OF_MONTH) == filteredDate.get(Calendar.DAY_OF_MONTH);
-        
-        boolean isHoliday = isKoreanHoliday(day);
-        boolean isSunday = dayOfWeek == Calendar.SUNDAY;
-        boolean isSaturday = dayOfWeek == Calendar.SATURDAY;
-
-        // 기본 텍스트 색상 결정 (요일/공휴일 기준)
-        int textColor;
-        if (isHoliday || isSunday) {
-            textColor = getResources().getColor(R.color.calendar_sunday, null); // 빨간색
-        } else if (isSaturday) {
-            textColor = getResources().getColor(R.color.calendar_saturday, null); // 파란색
-        } else {
-            textColor = 0xFF444444; // 기본 색상
-        }
-
-        // 원형 배경 크기 (일관된 크기 유지)
-        int circleSize = (int) (48 * getResources().getDisplayMetrics().density); // 48dp
-        
-        // 스타일 적용 (우선순위: 오늘 > 선택됨 > ToDo 있음 > 기본)
-        android.graphics.drawable.GradientDrawable bg = null;
-
-        if (isToday) {
-            // 오늘 날짜 - 원형 배경으로 강조
-            bg = new android.graphics.drawable.GradientDrawable();
-            bg.setShape(android.graphics.drawable.GradientDrawable.OVAL);
-            bg.setColor(getResources().getColor(R.color.calendar_today_bg, null));
-            dayView.setTextColor(getResources().getColor(R.color.calendar_today_text, null));
-            dayView.setTypeface(null, android.graphics.Typeface.BOLD);
-        } else if (isSelected) {
-            // 선택된 날짜 - 연한 배경
-            bg = new android.graphics.drawable.GradientDrawable();
-            bg.setShape(android.graphics.drawable.GradientDrawable.OVAL);
-            bg.setColor(getResources().getColor(R.color.calendar_selected, null));
-            dayView.setTextColor(textColor);
-            dayView.setTypeface(null, android.graphics.Typeface.BOLD);
-        } else if (hasTodos) {
-            // ToDo가 있는 날짜 - 연한 원형 배경 표시
-            bg = new android.graphics.drawable.GradientDrawable();
-            bg.setShape(android.graphics.drawable.GradientDrawable.OVAL);
-            bg.setColor(getResources().getColor(R.color.calendar_has_todo_bg, null));
-            dayView.setTextColor(textColor);
-            dayView.setTypeface(null, android.graphics.Typeface.BOLD);
-        } else {
-            // 기본 상태 - 배경 없음
-            dayView.setBackgroundColor(0x00000000);
-            dayView.setTextColor(textColor);
-        }
-
-        // 원형 배경 적용
-        if (bg != null) {
-            bg.setSize(circleSize, circleSize);
-            dayView.setBackground(bg);
-        }
-
-        // 클릭 이벤트 - 해당 날짜의 ToDo 목록 필터링
-        final Calendar clickedDate = (Calendar) dateKey.clone();
-        dayView.setOnClickListener(v -> {
-            if (filteredDate != null && 
-                filteredDate.get(Calendar.YEAR) == clickedDate.get(Calendar.YEAR) &&
-                filteredDate.get(Calendar.MONTH) == clickedDate.get(Calendar.MONTH) &&
-                filteredDate.get(Calendar.DAY_OF_MONTH) == clickedDate.get(Calendar.DAY_OF_MONTH)) {
-                // 같은 날짜 다시 클릭 시 전체 보기로 전환
-                filteredDate = null;
-            } else {
-                // 새 날짜 선택
-                filteredDate = clickedDate;
-            }
-            updateCalendar();
-            filterToDosByDate();
-        });
-        dayView.setClickable(true);
-
-        return dayView;
+        return items;
     }
 
     private void loadToDos() {
@@ -335,71 +117,10 @@ public class ToDoFragment extends Fragment {
             if (!isAdded()) {
                 return;
             }
-            // 모든 ToDo 가져오기 (완료된 항목 포함 - 달력 표시용)
-            List<ToDoItem> allTodos = dbHelper.getAllToDos();
-            
-            // ToDo가 있는 날짜 수집 (완료된 항목 포함)
-            datesWithTodos.clear();
-            Calendar cal = Calendar.getInstance();
-            for (ToDoItem todo : allTodos) {
-                cal.setTimeInMillis(todo.getDate());
-                cal.set(Calendar.HOUR_OF_DAY, 0);
-                cal.set(Calendar.MINUTE, 0);
-                cal.set(Calendar.SECOND, 0);
-                cal.set(Calendar.MILLISECOND, 0);
-                datesWithTodos.add(cal.getTimeInMillis());
-            }
-            
-            updateCalendar();
-            filterToDosByDate();
-            updateCalendarStatus();
+            List<ToDoItem> todos = dbHelper.getActiveToDos();
+            todoAdapter.setToDos(todos);
+            tvTodoEmpty.setVisibility(todos.isEmpty() ? View.VISIBLE : View.GONE);
         });
-    }
-    
-    private void filterToDosByDate() {
-        List<ToDoItem> todosToShow;
-        
-        if (filteredDate != null) {
-            // 선택된 날짜의 ToDo만 표시 (완료된 항목 포함)
-            List<ToDoItem> allTodos = dbHelper.getAllToDos();
-            todosToShow = new ArrayList<>();
-            
-            Calendar filterCal = (Calendar) filteredDate.clone();
-            filterCal.set(Calendar.HOUR_OF_DAY, 0);
-            filterCal.set(Calendar.MINUTE, 0);
-            filterCal.set(Calendar.SECOND, 0);
-            filterCal.set(Calendar.MILLISECOND, 0);
-            long filterDateKey = filterCal.getTimeInMillis();
-            
-            Calendar todoCal = Calendar.getInstance();
-            for (ToDoItem todo : allTodos) {
-                todoCal.setTimeInMillis(todo.getDate());
-                todoCal.set(Calendar.HOUR_OF_DAY, 0);
-                todoCal.set(Calendar.MINUTE, 0);
-                todoCal.set(Calendar.SECOND, 0);
-                todoCal.set(Calendar.MILLISECOND, 0);
-                
-                if (todoCal.getTimeInMillis() == filterDateKey) {
-                    todosToShow.add(todo);
-                }
-            }
-        } else {
-            // 전체 보기 (완료되지 않은 항목만)
-            todosToShow = dbHelper.getActiveToDos();
-        }
-        
-        todoAdapter.setToDos(todosToShow);
-        updateCalendarStatus();
-    }
-    
-    private void updateCalendarStatus() {
-        if (filteredDate != null) {
-            SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy년 M월 d일", Locale.getDefault());
-            tvCalendarStatus.setText(dateFormat.format(filteredDate.getTime()) + " 일정");
-            tvCalendarStatus.setVisibility(View.VISIBLE);
-        } else {
-            tvCalendarStatus.setVisibility(View.GONE);
-        }
     }
 
     private void showToDoInputDialog(ToDoItem todo) {

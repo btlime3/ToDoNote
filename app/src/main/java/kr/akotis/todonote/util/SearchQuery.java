@@ -56,24 +56,4 @@ public final class SearchQuery {
         }
         return -1;
     }
-
-    /** 검색어가 처음 나오는 부분을 중심으로 한 줄 요약을 만든다. */
-    public String excerpt(String text, int maxLength) {
-        String flat = text != null ? text.replaceAll("\\s+", " ").trim() : "";
-        if (flat.length() <= maxLength) {
-            return flat;
-        }
-        int match = -1;
-        for (String term : terms) {
-            int index = indexOf(flat, term, 0);
-            if (index >= 0 && (match < 0 || index < match)) {
-                match = index;
-            }
-        }
-        int start = Math.min(Math.max(match - EXCERPT_LEAD, 0), flat.length() - maxLength);
-        int end = start + maxLength;
-        return (start > 0 ? "…" : "") + flat.substring(start, end) + (end < flat.length() ? "…" : "");
-    }
-
-    private static final int EXCERPT_LEAD = 20;
 }

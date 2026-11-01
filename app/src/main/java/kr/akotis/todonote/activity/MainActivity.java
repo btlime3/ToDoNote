@@ -1,9 +1,12 @@
 package kr.akotis.todonote.activity;
 
+import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.ContentResolver;
 import android.content.ContentValues;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
@@ -14,6 +17,7 @@ import android.provider.MediaStore;
 import android.view.View;
 import android.view.Window;
 import android.widget.ImageView;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.activity.EdgeToEdge;
@@ -67,9 +71,8 @@ import kr.akotis.todonote.database.DatabaseHelper;
 import kr.akotis.todonote.fragment.CompletedToDoFragment;
 import kr.akotis.todonote.fragment.MemoFragment;
 import kr.akotis.todonote.fragment.MessageFragment;
-import kr.akotis.todonote.fragment.NoteEditFragment;
 import kr.akotis.todonote.fragment.NoteFragment;
-import kr.akotis.todonote.fragment.SearchFragment;
+import kr.akotis.todonote.service.MyFirebaseMessagingService;
 import kr.akotis.todonote.fragment.ToDoFragment;
 import kr.akotis.todonote.fragment.TrashFragment;
 
@@ -89,8 +92,19 @@ public class MainActivity extends AppCompatActivity {
     private ActivityResultLauncher<String> notificationPermissionLauncher;
     
     private MenuItem notificationMenuItem;
-    private MenuItem searchMenuItem;
     private DatabaseHelper dbHelper;
+    /** 앱을 보고 있는 동안 도착한 알림도 숫자와 알림 화면에 바로 반영한다. */
+    private final BroadcastReceiver messageReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            Fragment current = getSupportFragmentManager().findFragmentById(R.id.fragment_container);
+            if (current instanceof MessageFragment) {
+                ((MessageFragment) current).refresh();
+            } else {
+                updateNotificationBadge();
+            }
+        }
+    };
     /** 잠금 해제를 기다리는 동안 받은 알림 Intent가 있는지. 해제 뒤 해당 화면을 연다. */
     private boolean notificationIntentPending;
     /** 손상 안내를 이번 실행에서 이미 보여 주었는지. 화면으로 돌아올 때마다 반복하지 않는다. */
@@ -128,15 +142,6 @@ public class MainActivity extends AppCompatActivity {
 
         dbHelper = new DatabaseHelper(this);
         cleanUpLeftoverImportFiles();
-
-        getSupportFragmentManager().registerFragmentLifecycleCallbacks(
-                new FragmentManager.FragmentLifecycleCallbacks() {
-                    @Override
-                    public void onFragmentResumed(@NonNull FragmentManager fm, @NonNull Fragment f) {
-                        updateSearchActionVisibility();
-                        syncBottomNavWithCurrentScreen();
-                    }
-                }, false);
 
         // 테스터 모드 터치 영역 설정
         setupTesterModeTouchArea();
@@ -184,6 +189,20 @@ public class MainActivity extends AppCompatActivity {
     protected void onDestroy() {
         super.onDestroy();
         dbHelper.close();
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        ContextCompat.registerReceiver(this, messageReceiver,
+                new IntentFilter(MyFirebaseMessagingService.ACTION_MESSAGE_RECEIVED),
+                ContextCompat.RECEIVER_NOT_EXPORTED);
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        unregisterReceiver(messageReceiver);
     }
 
     @Override
@@ -488,14 +507,6 @@ public class MainActivity extends AppCompatActivity {
     public boolean onCreateOptionsMenu(Menu menu) {
         getMenuInflater().inflate(R.menu.toolbar_menu, menu);
         notificationMenuItem = menu.findItem(R.id.action_notifications);
-        searchMenuItem = menu.findItem(R.id.action_search);
-        updateSearchActionVisibility();
-
-        // 테스터 모드가 아니면 알림 메뉴 아이템 숨기기
-        if (!isTesterModeEnabled()) {
-            notificationMenuItem.setVisible(false);
-        }
-        
         updateNotificationBadge();
         return true;
     }
@@ -506,44 +517,11 @@ public class MainActivity extends AppCompatActivity {
             loadFragment(new MessageFragment());
             return true;
         }
-        if (item.getItemId() == R.id.action_search) {
-            getSupportFragmentManager().beginTransaction()
-                    .replace(R.id.fragment_container, new SearchFragment())
-                    .addToBackStack(null)
-                    .commit();
-            return true;
-        }
         return super.onOptionsItemSelected(item);
-    }
-
-    /** 검색 화면과 노트 편집 화면에서는 검색으로 다시 이동할 일이 없으므로 버튼을 숨긴다. */
-    private void updateSearchActionVisibility() {
-        if (searchMenuItem != null) {
-            Fragment current = getSupportFragmentManager().findFragmentById(R.id.fragment_container);
-            searchMenuItem.setVisible(!(current instanceof SearchFragment || current instanceof NoteEditFragment));
-        }
     }
 
     private void showMessages() {
         loadFragment(new MessageFragment());
-    }
-
-    /** 검색 결과에서 열었다가 돌아올 때도 하단 탭 표시가 현재 화면과 맞도록 한다. */
-    private void syncBottomNavWithCurrentScreen() {
-        Fragment current = getSupportFragmentManager().findFragmentById(R.id.fragment_container);
-        int tab;
-        if (current instanceof MemoFragment) {
-            tab = R.id.nav_memo;
-        } else if (current instanceof NoteFragment) {
-            tab = R.id.nav_note;
-        } else if (current instanceof ToDoFragment) {
-            tab = R.id.nav_todo;
-        } else {
-            return;
-        }
-        if (bottomNav.getSelectedItemId() != tab) {
-            selectTabWithoutLoading(tab);
-        }
     }
 
     private void selectTabWithoutLoading(int tab) {
@@ -573,13 +551,8 @@ public class MainActivity extends AppCompatActivity {
         android.content.SharedPreferences prefs = getSharedPreferences(PREF_APP_LOCK, MODE_PRIVATE);
         prefs.edit().putBoolean(KEY_TESTER_MODE_ENABLED, true).apply();
         
-        Toast.makeText(this, "테스터용 알리미 기능 활성화", Toast.LENGTH_LONG).show();
-        
-        // 알림 메뉴 아이템 표시
-        if (notificationMenuItem != null) {
-            notificationMenuItem.setVisible(true);
-        }
-        
+        Toast.makeText(this, "FCM 토큰 메뉴를 표시합니다.", Toast.LENGTH_LONG).show();
+
         // FCM 토큰 메뉴 표시
         updateFcmTokenMenuVisibility();
     }
@@ -624,12 +597,6 @@ public class MainActivity extends AppCompatActivity {
     
     public void updateNotificationBadge() {
         if (notificationMenuItem != null && dbHelper != null) {
-            // 테스터 모드가 아니면 아이콘 숨기기
-            if (!isTesterModeEnabled()) {
-                notificationMenuItem.setVisible(false);
-                return;
-            }
-            
             int unreadCount = dbHelper.getUnreadMessageCount();
             
             // ActionView가 없으면 생성
@@ -648,7 +615,7 @@ public class MainActivity extends AppCompatActivity {
             }
             
             ImageView iconView = actionView != null ? actionView.findViewById(R.id.icon) : null;
-            View badgeView = actionView != null ? actionView.findViewById(R.id.badge) : null;
+            TextView badgeView = actionView != null ? actionView.findViewById(R.id.badge) : null;
             
             // 항상 기본 알림 아이콘 표시 (색상 변경 없음)
             if (iconView != null) {
@@ -656,8 +623,9 @@ public class MainActivity extends AppCompatActivity {
                 iconView.clearColorFilter();
             }
             
-            // 읽지 않은 알림이 있으면 빨간 원형 인디케이터 표시
+            // 읽지 않은 알림 개수 표시
             if (badgeView != null) {
+                badgeView.setText(unreadCount > 99 ? "99+" : String.valueOf(unreadCount));
                 badgeView.setVisibility(unreadCount > 0 ? View.VISIBLE : View.GONE);
             }
         }
