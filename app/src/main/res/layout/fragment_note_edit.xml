@@ -43,15 +43,6 @@
                 android:layout_height="0dp"
                 android:layout_weight="1" />
 
-            <!-- 고정 버튼 (편집 모드일 때만 표시) -->
-            <ImageButton
-                android:id="@+id/btn_pin"
-                style="@style/NoteEditIconButton"
-                android:src="@drawable/ic_pin_outline"
-                android:contentDescription="고정"
-                android:tooltipText="고정"
-                android:visibility="gone" />
-
             <!-- 이전 버전 버튼 (편집 모드일 때만 표시) -->
             <ImageButton
                 android:id="@+id/btn_history"

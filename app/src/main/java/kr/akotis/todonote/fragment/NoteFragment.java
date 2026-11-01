@@ -6,6 +6,7 @@ import android.text.TextWatcher;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.EditText;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -16,7 +17,6 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.android.material.snackbar.Snackbar;
-import com.google.android.material.textfield.TextInputEditText;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -25,6 +25,7 @@ import kr.akotis.todonote.R;
 import kr.akotis.todonote.adapter.NoteAdapter;
 import kr.akotis.todonote.database.DatabaseHelper;
 import kr.akotis.todonote.model.NoteItem;
+import kr.akotis.todonote.util.CollapsibleSearchBar;
 import kr.akotis.todonote.util.NoteUnlocker;
 import kr.akotis.todonote.util.SearchQuery;
 
@@ -33,7 +34,7 @@ public class NoteFragment extends Fragment {
     private static final int NEW_NOTE_DRAFT_NOTICE_MS = 8000;
 
     private RecyclerView recyclerNote;
-    private TextInputEditText etSearch;
+    private EditText etSearch;
     private FloatingActionButton fabNote;
     private DatabaseHelper dbHelper;
     private NoteAdapter noteAdapter;
@@ -51,6 +52,7 @@ public class NoteFragment extends Fragment {
         tvEmpty = view.findViewById(R.id.tv_note_empty);
         etSearch = view.findViewById(R.id.et_search);
         etSearch.setHint("노트 검색...");
+        CollapsibleSearchBar.attach(view.findViewById(R.id.search_card), "note");
         fabNote = view.findViewById(R.id.fab_note);
 
         // RecyclerView 설정 (가로 3개씩)
@@ -116,14 +118,6 @@ public class NoteFragment extends Fragment {
             public boolean isLongPressDragEnabled() {
                 // 검색 결과는 일부만 보이므로 순서를 바꾸면 전체 순서가 어긋난다.
                 return SearchQuery.parse(etSearch.getText() != null ? etSearch.getText().toString() : "").isEmpty();
-            }
-
-            @Override
-            public boolean canDropOver(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder current, @NonNull RecyclerView.ViewHolder target) {
-                // 고정한 노트와 고정하지 않은 노트는 서로 섞이지 않는다.
-                NoteItem from = noteAdapter.getNoteAt(current.getBindingAdapterPosition());
-                NoteItem to = noteAdapter.getNoteAt(target.getBindingAdapterPosition());
-                return from != null && to != null && from.isPinned() == to.isPinned();
             }
 
             @Override

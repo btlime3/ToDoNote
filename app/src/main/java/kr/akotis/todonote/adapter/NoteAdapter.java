@@ -53,13 +53,6 @@ public class NoteAdapter extends RecyclerView.Adapter<NoteAdapter.NoteViewHolder
         notifyDataSetChanged();
     }
 
-    public NoteItem getNoteAt(int position) {
-        if (position >= 0 && position < noteList.size()) {
-            return noteList.get(position);
-        }
-        return null;
-    }
-
     public void moveItem(int fromPosition, int toPosition) {
         if (fromPosition < toPosition) {
             for (int i = fromPosition; i < toPosition; i++) {
@@ -85,14 +78,12 @@ public class NoteAdapter extends RecyclerView.Adapter<NoteAdapter.NoteViewHolder
         private TextView tvContent;
         private TextView tvTitle;
         private ImageView ivLock;
-        private ImageView ivPin;
 
         public NoteViewHolder(@NonNull View itemView) {
             super(itemView);
             tvContent = itemView.findViewById(R.id.tv_note_content);
             tvTitle = itemView.findViewById(R.id.tv_note_title);
             ivLock = itemView.findViewById(R.id.iv_lock);
-            ivPin = itemView.findViewById(R.id.iv_note_pin);
 
             itemView.setOnClickListener(v -> {
                 if (listener != null) {
@@ -127,8 +118,6 @@ public class NoteAdapter extends RecyclerView.Adapter<NoteAdapter.NoteViewHolder
                     ivLock.setVisibility(View.GONE);
                 }
             }
-
-            ivPin.setVisibility(note.isPinned() ? View.VISIBLE : View.GONE);
 
             // 제목 표시 (잠금 여부와 관계없이 항상 표시)
             String title = note.getTitle();

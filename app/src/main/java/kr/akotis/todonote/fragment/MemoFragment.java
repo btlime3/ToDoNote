@@ -9,6 +9,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.inputmethod.InputMethodManager;
+import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -36,6 +37,7 @@ import kr.akotis.todonote.adapter.MemoAdapter;
 import kr.akotis.todonote.database.DatabaseHelper;
 import kr.akotis.todonote.model.DraftItem;
 import kr.akotis.todonote.model.MemoItem;
+import kr.akotis.todonote.util.CollapsibleSearchBar;
 import kr.akotis.todonote.util.DebouncedRunner;
 import kr.akotis.todonote.util.SearchQuery;
 
@@ -61,7 +63,7 @@ public class MemoFragment extends Fragment {
     private OnBackPressedCallback backCallback;
     /** 키보드가 실제로 열렸다가 닫힌 경우만 구분하기 위한 상태. */
     private boolean keyboardWasVisible;
-    private TextInputEditText etSearch;
+    private EditText etSearch;
     private TextView tvEmpty;
     private List<MemoItem> allMemos = new ArrayList<>();
     /** 다른 화면을 열었다가 돌아오면 같은 Fragment로 뷰만 새로 만들어진다. */
@@ -103,15 +105,12 @@ public class MemoFragment extends Fragment {
         etSearch = view.findViewById(R.id.et_search);
         tvEmpty = view.findViewById(R.id.tv_memo_empty);
         etSearch.setHint("메모 검색...");
+        CollapsibleSearchBar.attach(view.findViewById(R.id.search_card), "memo");
 
         // RecyclerView 설정
         memoAdapter = new MemoAdapter();
         recyclerMemo.setLayoutManager(new LinearLayoutManager(requireContext()));
         recyclerMemo.setAdapter(memoAdapter);
-        memoAdapter.setOnPinClickListener(memo -> {
-            dbHelper.setMemoPinned(memo.getId(), !memo.isPinned());
-            loadMemos();
-        });
 
         // 스와이프 제스처 설정
         setupSwipeGesture();
@@ -386,13 +385,9 @@ public class MemoFragment extends Fragment {
             }
             // 새 메모가 검색 조건에 가려지지 않도록 검색어를 지운다. (목록 갱신도 함께 일어난다)
             etSearch.setText("");
+            // 새 메모는 상단에 추가된다.
             loadMemos();
-            // 새 메모는 고정한 메모 바로 아래에 온다.
-            int newMemoPosition = 0;
-            while (newMemoPosition < allMemos.size() && allMemos.get(newMemoPosition).isPinned()) {
-                newMemoPosition++;
-            }
-            recyclerMemo.scrollToPosition(newMemoPosition);
+            recyclerMemo.scrollToPosition(0);
         }
 
         dbHelper.deleteMemoDraft();
@@ -403,14 +398,6 @@ public class MemoFragment extends Fragment {
         ItemTouchHelper.SimpleCallback itemTouchHelperCallback = new ItemTouchHelper.SimpleCallback(
                 ItemTouchHelper.UP | ItemTouchHelper.DOWN, ItemTouchHelper.LEFT | ItemTouchHelper.RIGHT) {
             private boolean orderChanged;
-
-            @Override
-            public boolean canDropOver(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder current, @NonNull RecyclerView.ViewHolder target) {
-                // 고정한 메모와 고정하지 않은 메모는 서로 섞이지 않는다.
-                MemoItem from = memoAdapter.getMemoAt(current.getBindingAdapterPosition());
-                MemoItem to = memoAdapter.getMemoAt(target.getBindingAdapterPosition());
-                return from != null && to != null && from.isPinned() == to.isPinned();
-            }
 
             @Override
             public boolean onMove(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder viewHolder, @NonNull RecyclerView.ViewHolder target) {

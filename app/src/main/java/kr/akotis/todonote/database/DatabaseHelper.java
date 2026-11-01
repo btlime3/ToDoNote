@@ -35,7 +35,7 @@ import kr.akotis.todonote.model.ToDoItem;
 public class DatabaseHelper extends SQLiteOpenHelper {
 
     private static final String DATABASE_NAME = "ToDoNote.db";
-    private static final int DATABASE_VERSION = 15;
+    private static final int DATABASE_VERSION = 14;
     public static final int MAX_STORED_MESSAGES = 30;
     /** 노트 하나당 보관하는 이전 버전 개수. */
     public static final int MAX_NOTE_VERSIONS = 30;
@@ -77,7 +77,6 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     private static final String COL_MEMO_UPDATED_AT = "updated_at";
     private static final String COL_MEMO_ORDER = "memo_order";
     private static final String COL_MEMO_DELETED_AT = "deleted_at";
-    private static final String COL_MEMO_PINNED = "pinned";
 
     // Note 테이블
     private static final String TABLE_NOTE = "note";
@@ -89,7 +88,6 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     private static final String COL_NOTE_DELETED_AT = "deleted_at";
     private static final String COL_NOTE_LOCKED = "locked";
     private static final String COL_NOTE_ORDER = "note_order";
-    private static final String COL_NOTE_PINNED = "pinned";
 
     // Message 테이블 (FCM 알림)
     private static final String TABLE_MESSAGE = "message";
@@ -342,8 +340,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 COL_MEMO_CREATED_AT + " INTEGER, " +
                 COL_MEMO_UPDATED_AT + " INTEGER, " +
                 COL_MEMO_ORDER + " INTEGER DEFAULT 0, " +
-                COL_MEMO_DELETED_AT + " INTEGER, " +
-                COL_MEMO_PINNED + " INTEGER DEFAULT 0)";
+                COL_MEMO_DELETED_AT + " INTEGER)";
         db.execSQL(createMemoTable);
 
         // Note 테이블 생성
@@ -355,8 +352,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 COL_NOTE_UPDATED_AT + " INTEGER, " +
                 COL_NOTE_DELETED_AT + " INTEGER, " +
                 COL_NOTE_LOCKED + " INTEGER DEFAULT 0, " +
-                COL_NOTE_ORDER + " INTEGER DEFAULT 0, " +
-                COL_NOTE_PINNED + " INTEGER DEFAULT 0)";
+                COL_NOTE_ORDER + " INTEGER DEFAULT 0)";
         db.execSQL(createNoteTable);
 
         // 암호 설정 테이블 생성
@@ -488,11 +484,6 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             // 노트 수정 이력 테이블 추가
             db.execSQL(CREATE_NOTE_HISTORY_TABLE);
             db.execSQL(CREATE_NOTE_HISTORY_INDEX);
-        }
-        if (oldVersion < 15) {
-            // 메모와 노트 고정 컬럼 추가. 기존 항목은 고정되지 않은 상태로 시작한다.
-            db.execSQL("ALTER TABLE " + TABLE_MEMO + " ADD COLUMN " + COL_MEMO_PINNED + " INTEGER DEFAULT 0");
-            db.execSQL("ALTER TABLE " + TABLE_NOTE + " ADD COLUMN " + COL_NOTE_PINNED + " INTEGER DEFAULT 0");
         }
     }
 
@@ -759,8 +750,6 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         if (deletedAtIndex >= 0 && !cursor.isNull(deletedAtIndex)) {
             memo.setDeletedAt(cursor.getLong(deletedAtIndex));
         }
-        int pinnedIndex = cursor.getColumnIndex(COL_MEMO_PINNED);
-        memo.setPinned(pinnedIndex >= 0 && cursor.getInt(pinnedIndex) == 1);
         return memo;
     }
 
@@ -781,8 +770,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         List<MemoItem> memoList = new ArrayList<>();
         SQLiteDatabase db = this.getReadableDatabase();
         String selection = COL_MEMO_DELETED_AT + " IS NULL";
-        Cursor cursor = db.query(TABLE_MEMO, null, selection, null, null, null,
-                COL_MEMO_PINNED + " DESC, " + COL_MEMO_ORDER + " ASC");
+        Cursor cursor = db.query(TABLE_MEMO, null, selection, null, null, null, COL_MEMO_ORDER + " ASC");
 
         if (cursor.moveToFirst()) {
             do {
@@ -801,16 +789,6 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         values.put(COL_MEMO_UPDATED_AT, System.currentTimeMillis());
 
         int result = db.update(TABLE_MEMO, values, COL_MEMO_ID + " = ?", new String[]{String.valueOf(memo.getId())});
-        db.close();
-        return result;
-    }
-
-    /** 고정 여부만 바꾼다. 수정 시각은 내용이 바뀐 때를 나타내므로 그대로 둔다. */
-    public int setMemoPinned(long id, boolean pinned) {
-        SQLiteDatabase db = this.getWritableDatabase();
-        ContentValues values = new ContentValues();
-        values.put(COL_MEMO_PINNED, pinned ? 1 : 0);
-        int result = db.update(TABLE_MEMO, values, COL_MEMO_ID + " = ?", new String[]{String.valueOf(id)});
         db.close();
         return result;
     }
@@ -923,8 +901,6 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         if (orderIndex >= 0) {
             note.setOrder(cursor.getInt(orderIndex));
         }
-        int pinnedIndex = cursor.getColumnIndex(COL_NOTE_PINNED);
-        note.setPinned(pinnedIndex >= 0 && cursor.getInt(pinnedIndex) == 1);
         return note;
     }
 
@@ -932,8 +908,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         List<NoteItem> noteList = new ArrayList<>();
         SQLiteDatabase db = this.getReadableDatabase();
         String selection = COL_NOTE_DELETED_AT + " IS NULL";
-        Cursor cursor = db.query(TABLE_NOTE, null, selection, null, null, null,
-                COL_NOTE_PINNED + " DESC, " + COL_NOTE_ORDER + " ASC");
+        Cursor cursor = db.query(TABLE_NOTE, null, selection, null, null, null, COL_NOTE_ORDER + " ASC");
 
         if (cursor.moveToFirst()) {
             do {
@@ -1023,16 +998,6 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     public int deleteNoteHistory(long noteId) {
         SQLiteDatabase db = this.getWritableDatabase();
         int result = db.delete(TABLE_NOTE_HISTORY, COL_HISTORY_NOTE_ID + " = ?", new String[]{String.valueOf(noteId)});
-        db.close();
-        return result;
-    }
-
-    /** 고정 여부만 바꾼다. 수정 시각은 내용이 바뀐 때를 나타내므로 그대로 둔다. */
-    public int setNotePinned(long id, boolean pinned) {
-        SQLiteDatabase db = this.getWritableDatabase();
-        ContentValues values = new ContentValues();
-        values.put(COL_NOTE_PINNED, pinned ? 1 : 0);
-        int result = db.update(TABLE_NOTE, values, COL_NOTE_ID + " = ?", new String[]{String.valueOf(id)});
         db.close();
         return result;
     }

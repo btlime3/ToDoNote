@@ -134,7 +134,7 @@ public class ImportSafetyTest {
         try (SQLiteDatabase db = SQLiteDatabase.openOrCreateDatabase(lookalike, null)) {
             db.execSQL("CREATE TABLE memo (id INTEGER PRIMARY KEY)");
             db.execSQL("CREATE TABLE note (id INTEGER PRIMARY KEY)");
-            db.setVersion(15);
+            db.setVersion(14);
         }
         // 형식 검사는 통과하지만 교체하면 앱이 시작할 때마다 종료되는 파일이다.
         assertEquals(DatabaseHelper.ImportCheck.OK, DatabaseHelper.checkImportFile(lookalike));
@@ -191,12 +191,11 @@ public class ImportSafetyTest {
     }
 
     @Test
-    public void historyDraftsAndPinsSurviveBackupRoundTrip() throws IOException {
+    public void historyAndDraftsSurviveBackupRoundTrip() throws IOException {
         long noteId = helper.insertNote(new NoteItem("제목", "첫 내용"));
         NoteItem note = helper.getNoteById(noteId);
         note.setContent("둘째 내용");
         helper.updateNote(note);
-        helper.setNotePinned(noteId, true);
         helper.saveNoteDraft(noteId, "제목", "임시 내용");
 
         File backup = snapshot();
@@ -205,7 +204,6 @@ public class ImportSafetyTest {
         try {
             assertEquals("첫 내용", restored.getNoteHistory(noteId).get(0).getContent());
             assertEquals("임시 내용", restored.getNoteDraft(noteId).getContent());
-            assertTrue(restored.getNoteById(noteId).isPinned());
         } finally {
             restored.close();
         }

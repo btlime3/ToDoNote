@@ -91,7 +91,6 @@ public class DatabaseUpgradeTest {
             assertEquals("첫째 메모", memos.get(0).getContent());
             assertEquals("둘째 메모", memos.get(1).getContent());
             assertEquals(210, memos.get(0).getUpdatedAt());
-            assertFalse(memos.get(0).isPinned());
             assertEquals("삭제한 메모", helper.getDeletedMemos().get(0).getContent());
             assertEquals(999, helper.getDeletedMemos().get(0).getDeletedAt());
 
@@ -101,7 +100,6 @@ public class DatabaseUpgradeTest {
             assertEquals("잠긴 노트", notes.get(1).getTitle());
             assertTrue(notes.get(1).isLocked());
             assertEquals("비밀 내용", notes.get(1).getContent());
-            assertFalse(notes.get(0).isPinned());
             assertEquals("삭제한 노트", helper.getDeletedNotes().get(0).getTitle());
 
             ToDoItem todo = helper.getToDoById(1);
@@ -163,11 +161,6 @@ public class DatabaseUpgradeTest {
             assertEquals("임시", helper.getNoteDraft(1).getContent());
             helper.deleteNoteDraft(1);
             assertNull(helper.getNoteDraft(1));
-
-            assertEquals(1, helper.setNotePinned(1, true));
-            assertEquals("잠긴 노트", helper.getAllNotes().get(0).getTitle());
-            assertEquals(1, helper.setMemoPinned(1, true));
-            assertEquals("둘째 메모", helper.getAllMemos().get(0).getContent());
         } finally {
             helper.close();
         }

@@ -29,6 +29,7 @@ import kr.akotis.todonote.model.MemoItem;
 import kr.akotis.todonote.model.MessageItem;
 import kr.akotis.todonote.model.NoteItem;
 import kr.akotis.todonote.model.ToDoItem;
+import kr.akotis.todonote.util.CollapsibleSearchBar;
 import kr.akotis.todonote.util.DebouncedRunner;
 import kr.akotis.todonote.util.NoteUnlocker;
 import kr.akotis.todonote.util.SearchQuery;
@@ -51,6 +52,7 @@ public class SearchFragment extends Fragment {
         View view = inflater.inflate(R.layout.fragment_search, container, false);
         dbHelper = new DatabaseHelper(requireContext());
         etSearch = view.findViewById(R.id.et_search);
+        CollapsibleSearchBar.attachAlwaysOpen(view.findViewById(R.id.search_card));
         tvStatus = view.findViewById(R.id.tv_search_status);
         searchRunner = new DebouncedRunner(SEARCH_DELAY_MS, this::runSearch);
 

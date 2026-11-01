@@ -7,7 +7,6 @@ public class MemoItem {
     private long updatedAt;
     private int order;
     private long deletedAt;
-    private boolean pinned;
 
     public MemoItem() {
     }
@@ -56,14 +55,6 @@ public class MemoItem {
 
     public void setOrder(int order) {
         this.order = order;
-    }
-
-    public boolean isPinned() {
-        return pinned;
-    }
-
-    public void setPinned(boolean pinned) {
-        this.pinned = pinned;
     }
 
     public long getDeletedAt() {
