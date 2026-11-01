@@ -8,6 +8,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.inputmethod.InputMethodManager;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.activity.OnBackPressedCallback;
@@ -26,6 +27,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.android.material.textfield.TextInputEditText;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import kr.akotis.todonote.R;
@@ -34,12 +36,15 @@ import kr.akotis.todonote.database.DatabaseHelper;
 import kr.akotis.todonote.model.DraftItem;
 import kr.akotis.todonote.model.MemoItem;
 import kr.akotis.todonote.util.DebouncedRunner;
+import kr.akotis.todonote.util.SearchQuery;
 
 import static android.content.Context.INPUT_METHOD_SERVICE;
 
 public class MemoFragment extends Fragment {
 
     private static final long DRAFT_SAVE_DELAY_MS = 1500;
+    private static final long FOCUS_HIGHLIGHT_MS = 2000;
+    private static final String ARG_FOCUS_MEMO_ID = "focus_memo_id";
 
     private FloatingActionButton fabMemo;
     private View inputContainer;
@@ -55,9 +60,21 @@ public class MemoFragment extends Fragment {
     private OnBackPressedCallback backCallback;
     /** 키보드가 실제로 열렸다가 닫힌 경우만 구분하기 위한 상태. */
     private boolean keyboardWasVisible;
+    private TextInputEditText etSearch;
+    private TextView tvEmpty;
+    private List<MemoItem> allMemos = new ArrayList<>();
 
     public MemoFragment() {
         // Required empty public constructor
+    }
+
+    /** 메모 탭을 열면서 지정한 메모로 이동해 잠시 강조한다. */
+    public static MemoFragment newInstance(long focusMemoId) {
+        MemoFragment fragment = new MemoFragment();
+        Bundle args = new Bundle();
+        args.putLong(ARG_FOCUS_MEMO_ID, focusMemoId);
+        fragment.setArguments(args);
+        return fragment;
     }
 
     @Override
@@ -79,6 +96,9 @@ public class MemoFragment extends Fragment {
         btnSave = view.findViewById(R.id.btn_memo_save);
         btnCancel = view.findViewById(R.id.btn_memo_cancel);
         recyclerMemo = view.findViewById(R.id.recycler_memo);
+        etSearch = view.findViewById(R.id.et_search);
+        tvEmpty = view.findViewById(R.id.tv_memo_empty);
+        etSearch.setHint("메모 검색...");
 
         // RecyclerView 설정
         memoAdapter = new MemoAdapter();
@@ -96,6 +116,21 @@ public class MemoFragment extends Fragment {
         btnSave.setOnClickListener(v -> saveMemo());
 
         btnCancel.setOnClickListener(v -> requestCloseInput());
+
+        etSearch.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {
+                showMemos();
+            }
+        });
 
         etMemoInput.addTextChangedListener(new TextWatcher() {
             @Override
@@ -129,6 +164,24 @@ public class MemoFragment extends Fragment {
         };
         requireActivity().getOnBackPressedDispatcher().addCallback(getViewLifecycleOwner(), backCallback);
         restoreDraft(savedInstanceState == null);
+        if (savedInstanceState == null) {
+            focusRequestedMemo();
+        }
+    }
+
+    private void focusRequestedMemo() {
+        long memoId = getArguments() != null ? getArguments().getLong(ARG_FOCUS_MEMO_ID, -1) : -1;
+        if (memoId == -1) {
+            return;
+        }
+        for (int i = 0; i < allMemos.size(); i++) {
+            if (allMemos.get(i).getId() == memoId) {
+                recyclerMemo.scrollToPosition(i);
+                memoAdapter.setFocusedMemoId(memoId);
+                recyclerMemo.postDelayed(() -> memoAdapter.setFocusedMemoId(-1), FOCUS_HIGHLIGHT_MS);
+                return;
+            }
+        }
     }
 
     @Override
@@ -207,8 +260,36 @@ public class MemoFragment extends Fragment {
     }
 
     private void loadMemos() {
-        List<MemoItem> memos = dbHelper.getAllMemos();
-        memoAdapter.setMemos(memos);
+        allMemos = dbHelper.getAllMemos();
+        showMemos();
+    }
+
+    /** 검색어에 맞는 메모만 보여준다. */
+    private void showMemos() {
+        SearchQuery query = currentQuery();
+        List<MemoItem> visible = allMemos;
+        if (!query.isEmpty()) {
+            visible = new ArrayList<>();
+            for (MemoItem memo : allMemos) {
+                if (query.matches(memo.getContent())) {
+                    visible.add(memo);
+                }
+            }
+        }
+        memoAdapter.setMemos(visible, query);
+        updateEmptyMessage();
+    }
+
+    private void updateEmptyMessage() {
+        boolean empty = memoAdapter.getItemCount() == 0;
+        tvEmpty.setVisibility(empty ? View.VISIBLE : View.GONE);
+        if (empty) {
+            tvEmpty.setText(currentQuery().isEmpty() ? "+ 버튼을 눌러 첫 메모를 남겨보세요." : "검색 결과가 없습니다.");
+        }
+    }
+
+    private SearchQuery currentQuery() {
+        return SearchQuery.parse(etSearch.getText() != null ? etSearch.getText().toString() : "");
     }
 
     private void showInputContainer(boolean showKeyboard) {
@@ -273,11 +354,14 @@ public class MemoFragment extends Fragment {
             // 새 메모 추가
             MemoItem memo = new MemoItem(content);
             long id = dbHelper.insertMemo(memo);
-            
+
             if (id > 0) {
                 memo.setId(id);
+                // 새 메모가 검색 조건에 가려지지 않도록 검색어를 지운다. (목록 갱신도 함께 일어난다)
+                etSearch.setText("");
                 // 새 메모는 상단에 추가되므로 목록을 다시 로드
                 loadMemos();
+                recyclerMemo.scrollToPosition(0);
             }
         }
 
@@ -299,6 +383,12 @@ public class MemoFragment extends Fragment {
                 dbHelper.updateMemoOrder(memoAdapter.getMemoList());
                 
                 return true;
+            }
+
+            @Override
+            public boolean isLongPressDragEnabled() {
+                // 검색 결과는 일부만 보이므로 순서를 바꾸면 전체 순서가 어긋난다.
+                return currentQuery().isEmpty();
             }
 
             @Override
@@ -395,8 +485,7 @@ public class MemoFragment extends Fragment {
                             // 수정 중이던 메모를 지웠으면 입력창도 함께 닫는다.
                             discardInput();
                         }
-                        memoAdapter.removeMemo(position);
-                        //Toast.makeText(requireContext(), "메모가 삭제되었습니다.", Toast.LENGTH_SHORT).show();
+                        loadMemos();
                     } else {
                         Toast.makeText(requireContext(), "삭제에 실패했습니다.", Toast.LENGTH_SHORT).show();
                         loadMemos(); // 실패 시 목록 새로고침

@@ -69,7 +69,9 @@ import kr.akotis.todonote.database.DatabaseHelper;
 import kr.akotis.todonote.fragment.CompletedToDoFragment;
 import kr.akotis.todonote.fragment.MemoFragment;
 import kr.akotis.todonote.fragment.MessageFragment;
+import kr.akotis.todonote.fragment.NoteEditFragment;
 import kr.akotis.todonote.fragment.NoteFragment;
+import kr.akotis.todonote.fragment.SearchFragment;
 import kr.akotis.todonote.fragment.ToDoFragment;
 import kr.akotis.todonote.fragment.TrashFragment;
 
@@ -89,7 +91,10 @@ public class MainActivity extends AppCompatActivity {
     private ActivityResultLauncher<String> notificationPermissionLauncher;
     
     private MenuItem notificationMenuItem;
+    private MenuItem searchMenuItem;
     private DatabaseHelper dbHelper;
+    /** 검색 결과에서 고른 메모. 메모 탭이 열릴 때 해당 위치로 이동한다. */
+    private long pendingMemoFocusId = -1;
     
     private static final String PREF_APP_LOCK = "app_lock_settings";
     private static final String KEY_APP_LOCK_ENABLED = "app_lock_enabled";
@@ -118,7 +123,15 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         dbHelper = new DatabaseHelper(this);
-        
+
+        getSupportFragmentManager().registerFragmentLifecycleCallbacks(
+                new FragmentManager.FragmentLifecycleCallbacks() {
+                    @Override
+                    public void onFragmentResumed(@NonNull FragmentManager fm, @NonNull Fragment f) {
+                        updateSearchActionVisibility();
+                    }
+                }, false);
+
         // 테스터 모드 터치 영역 설정
         setupTesterModeTouchArea();
         
@@ -441,7 +454,9 @@ public class MainActivity extends AppCompatActivity {
     public boolean onCreateOptionsMenu(Menu menu) {
         getMenuInflater().inflate(R.menu.toolbar_menu, menu);
         notificationMenuItem = menu.findItem(R.id.action_notifications);
-        
+        searchMenuItem = menu.findItem(R.id.action_search);
+        updateSearchActionVisibility();
+
         // 테스터 모드가 아니면 알림 메뉴 아이템 숨기기
         if (!isTesterModeEnabled()) {
             notificationMenuItem.setVisible(false);
@@ -457,7 +472,40 @@ public class MainActivity extends AppCompatActivity {
             loadFragment(new MessageFragment());
             return true;
         }
+        if (item.getItemId() == R.id.action_search) {
+            getSupportFragmentManager().beginTransaction()
+                    .replace(R.id.fragment_container, new SearchFragment())
+                    .addToBackStack(null)
+                    .commit();
+            return true;
+        }
         return super.onOptionsItemSelected(item);
+    }
+
+    /** 검색 화면과 노트 편집 화면에서는 검색으로 다시 이동할 일이 없으므로 버튼을 숨긴다. */
+    private void updateSearchActionVisibility() {
+        if (searchMenuItem != null) {
+            Fragment current = getSupportFragmentManager().findFragmentById(R.id.fragment_container);
+            searchMenuItem.setVisible(!(current instanceof SearchFragment || current instanceof NoteEditFragment));
+        }
+    }
+
+    /** 메모 탭을 열고 지정한 메모로 이동한다. */
+    public void showMemo(long memoId) {
+        pendingMemoFocusId = memoId;
+        bottomNav.setSelectedItemId(R.id.nav_memo);
+    }
+
+    public void showMessages() {
+        loadFragment(new MessageFragment());
+    }
+
+    public void showToDos(boolean completed) {
+        if (completed) {
+            loadFragment(new CompletedToDoFragment());
+        } else {
+            bottomNav.setSelectedItemId(R.id.nav_todo);
+        }
     }
     
     @Override
@@ -776,7 +824,10 @@ public class MainActivity extends AppCompatActivity {
         if (itemId == R.id.nav_todo) {
             return new ToDoFragment();
         } else if (itemId == R.id.nav_memo) {
-            return new MemoFragment();
+            MemoFragment memoFragment = pendingMemoFocusId != -1
+                    ? MemoFragment.newInstance(pendingMemoFocusId) : new MemoFragment();
+            pendingMemoFocusId = -1;
+            return memoFragment;
         } else if (itemId == R.id.nav_note) {
             return new NoteFragment();
         }

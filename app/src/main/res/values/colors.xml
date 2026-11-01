@@ -8,6 +8,8 @@
     <color name="color_primary_dark">#7DB8A5</color>
     <color name="color_primary_light">#C8E8DC</color>
     <color name="color_primary_very_light">#E5F3EF</color>
+    <!-- 밝은 배경 위 글자용으로 충분히 어두운 메인 컬러 -->
+    <color name="color_primary_text">#2E7D6B</color>
     
     <!-- 삭제 동작 색상 -->
     <color name="color_delete">#D32F2F</color>
