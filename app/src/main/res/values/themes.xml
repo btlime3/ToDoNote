@@ -35,4 +35,13 @@
     </style>
 
     <style name="Theme.ToDoNote" parent="Base.Theme.ToDoNote" />
+
+    <!-- 노트 편집 화면 상단의 아이콘 버튼 -->
+    <style name="NoteEditIconButton">
+        <item name="android:layout_width">40dp</item>
+        <item name="android:layout_height">40dp</item>
+        <item name="android:background">?attr/selectableItemBackgroundBorderless</item>
+        <item name="android:scaleType">center</item>
+        <item name="android:tint">@color/color_text_dark</item>
+    </style>
 </resources>

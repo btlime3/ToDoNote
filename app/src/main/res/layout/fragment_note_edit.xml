@@ -43,50 +43,34 @@
                 android:layout_height="0dp"
                 android:layout_weight="1" />
 
-            <!-- 삭제 버튼 (편집 모드일 때만 표시) -->
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btn_delete"
-                android:layout_width="wrap_content"
-                android:layout_height="36dp"
-                android:layout_marginEnd="6dp"
-                android:text="삭제"
-                android:textSize="13sp"
-                android:visibility="gone"
-                android:paddingStart="12dp"
-                android:paddingEnd="12dp"
-                android:insetTop="0dp"
-                android:insetBottom="0dp"
-                android:minHeight="0dp"
-                app:cornerRadius="18dp"
-                app:backgroundTint="#FFEBEE"
-                android:textColor="#D32F2F"
-                app:strokeColor="#FFCDD2"
-                app:strokeWidth="1dp"
-                style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+            <!-- 이전 버전 버튼 (편집 모드일 때만 표시) -->
+            <ImageButton
+                android:id="@+id/btn_history"
+                style="@style/NoteEditIconButton"
+                android:src="@drawable/ic_history"
+                android:contentDescription="이전 버전"
+                android:tooltipText="이전 버전"
+                android:visibility="gone" />
 
             <!-- 잠금 버튼 (편집 모드일 때만 표시) -->
-            <com.google.android.material.button.MaterialButton
+            <ImageButton
                 android:id="@+id/btn_lock"
-                android:layout_width="wrap_content"
-                android:layout_height="36dp"
+                style="@style/NoteEditIconButton"
+                android:src="@drawable/ic_lock_opened"
+                android:contentDescription="잠금"
+                android:tooltipText="잠금"
+                android:visibility="gone" />
+
+            <!-- 삭제 버튼 (편집 모드일 때만 표시) -->
+            <ImageButton
+                android:id="@+id/btn_delete"
+                style="@style/NoteEditIconButton"
                 android:layout_marginEnd="6dp"
-                android:text="잠금"
-                android:textSize="13sp"
-                android:visibility="gone"
-                android:paddingStart="12dp"
-                android:paddingEnd="12dp"
-                android:insetTop="0dp"
-                android:insetBottom="0dp"
-                android:minHeight="0dp"
-                app:cornerRadius="18dp"
-                app:backgroundTint="@color/color_accent_light"
-                android:textColor="@color/color_text_dark"
-                app:strokeColor="@color/color_accent"
-                app:strokeWidth="1dp"
-                app:icon="@android:drawable/ic_lock_lock"
-                app:iconSize="16dp"
-                app:iconTint="@color/color_text_dark"
-                style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+                android:src="@drawable/ic_delete_outline"
+                android:contentDescription="삭제"
+                android:tooltipText="삭제"
+                android:tint="@color/color_delete"
+                android:visibility="gone" />
 
             <!-- 저장 버튼 -->
             <com.google.android.material.button.MaterialButton

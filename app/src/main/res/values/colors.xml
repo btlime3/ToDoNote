@@ -9,6 +9,9 @@
     <color name="color_primary_light">#C8E8DC</color>
     <color name="color_primary_very_light">#E5F3EF</color>
     
+    <!-- 삭제 동작 색상 -->
+    <color name="color_delete">#D32F2F</color>
+
     <!-- 링크 색상 -->
     <color name="link_color">#2196F3</color>
     

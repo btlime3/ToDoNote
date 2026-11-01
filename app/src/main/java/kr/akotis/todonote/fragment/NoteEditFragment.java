@@ -10,6 +10,7 @@ import android.view.ViewGroup;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
 import android.widget.ImageButton;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.activity.OnBackPressedCallback;
@@ -23,17 +24,20 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.List;
 import java.util.Locale;
 
 import kr.akotis.todonote.R;
 import kr.akotis.todonote.database.DatabaseHelper;
 import kr.akotis.todonote.model.DraftItem;
 import kr.akotis.todonote.model.NoteItem;
+import kr.akotis.todonote.model.NoteVersion;
 import kr.akotis.todonote.util.DebouncedRunner;
 
 public class NoteEditFragment extends Fragment {
 
     private static final long DRAFT_SAVE_DELAY_MS = 1500;
+    private static final int VERSION_PREVIEW_LENGTH = 40;
     private static final String ARG_NOTE_ID = "note_id";
     private static final String ARG_RESTORE_DRAFT = "restore_draft";
     private static final String STATE_DRAFT_DECISION_PENDING = "draft_decision_pending";
@@ -42,8 +46,9 @@ public class NoteEditFragment extends Fragment {
     private EditText etContent;
     private MaterialButton btnSave;
     private ImageButton btnCancel;
-    private MaterialButton btnDelete;
-    private MaterialButton btnLock;
+    private ImageButton btnDelete;
+    private ImageButton btnLock;
+    private ImageButton btnHistory;
     private DatabaseHelper dbHelper;
     private NoteItem editingNote;
     private long noteId = -1;
@@ -101,6 +106,7 @@ public class NoteEditFragment extends Fragment {
         btnCancel = view.findViewById(R.id.btn_cancel);
         btnDelete = view.findViewById(R.id.btn_delete);
         btnLock = view.findViewById(R.id.btn_lock);
+        btnHistory = view.findViewById(R.id.btn_history);
 
         // note_id 확인
         if (noteId != -1) {
@@ -114,15 +120,9 @@ public class NoteEditFragment extends Fragment {
                 // 삭제 버튼 표시
                 btnDelete.setVisibility(View.VISIBLE);
                 // 잠금 버튼 표시 및 상태 설정
-                if (btnLock != null) {
-                    btnLock.setVisibility(View.VISIBLE);
-                    updateLockButton();
-                }
-            }
-        } else {
-            // 새 노트 작성 모드: 잠금 버튼 숨기기
-            if (btnLock != null) {
-                btnLock.setVisibility(View.GONE);
+                btnLock.setVisibility(View.VISIBLE);
+                updateLockButton();
+                btnHistory.setVisibility(View.VISIBLE);
             }
         }
 
@@ -136,9 +136,10 @@ public class NoteEditFragment extends Fragment {
         btnDelete.setOnClickListener(v -> showDeleteConfirmDialog());
 
         // 잠금 버튼 클릭
-        if (btnLock != null) {
-            btnLock.setOnClickListener(v -> toggleLock());
-        }
+        btnLock.setOnClickListener(v -> toggleLock());
+
+        // 이전 버전 버튼 클릭
+        btnHistory.setOnClickListener(v -> showHistoryDialog());
 
         return view;
     }
@@ -297,13 +298,93 @@ public class NoteEditFragment extends Fragment {
     }
 
     private void updateLockButton() {
-        if (editingNote != null && btnLock != null) {
-            if (editingNote.isLocked()) {
-                btnLock.setText("해제");
-            } else {
-                btnLock.setText("잠금");
-            }
+        if (editingNote != null) {
+            boolean locked = editingNote.isLocked();
+            btnLock.setImageResource(locked ? R.drawable.ic_lock_closed : R.drawable.ic_lock_opened);
+            String label = locked ? "잠금 해제" : "잠금";
+            btnLock.setContentDescription(label);
+            btnLock.setTooltipText(label);
         }
+    }
+
+    private void showHistoryDialog() {
+        List<NoteVersion> versions = dbHelper.getNoteHistory(noteId);
+        if (versions.isEmpty()) {
+            Toast.makeText(requireContext(), "이전 버전이 없습니다. 내용을 수정해 저장하면 여기에 쌓입니다.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        CharSequence[] rows = new CharSequence[versions.size()];
+        for (int i = 0; i < rows.length; i++) {
+            rows[i] = describeVersion(versions.get(i));
+        }
+        new MaterialAlertDialogBuilder(requireContext())
+                .setTitle("이전 버전")
+                .setItems(rows, (dialog, which) -> showVersionPreview(versions.get(which)))
+                .setNegativeButton("닫기", null)
+                .setNeutralButton("이력 삭제", (dialog, which) -> confirmDeleteHistory())
+                .show();
+    }
+
+    private String describeVersion(NoteVersion version) {
+        String content = version.getContent().trim();
+        int lineEnd = content.indexOf('\n');
+        String firstLine = lineEnd >= 0 ? content.substring(0, lineEnd) : content;
+        if (firstLine.length() > VERSION_PREVIEW_LENGTH) {
+            firstLine = firstLine.substring(0, VERSION_PREVIEW_LENGTH) + "…";
+        }
+        String summary = firstLine.isEmpty() ? "내용 없음" : firstLine;
+        return formatVersionTime(version) + " · " + content.length() + "자\n" + summary;
+    }
+
+    private String formatVersionTime(NoteVersion version) {
+        return new SimpleDateFormat("yyyy.M.d a h:mm", Locale.KOREAN).format(new Date(version.getSavedAt()));
+    }
+
+    private void showVersionPreview(NoteVersion version) {
+        String title = version.getTitle().trim().isEmpty() ? "제목 없음" : version.getTitle();
+        AlertDialog preview = new MaterialAlertDialogBuilder(requireContext())
+                .setTitle(title)
+                .setMessage(formatVersionTime(version) + "에 저장한 내용\n\n" + version.getContent())
+                .setPositiveButton("이 버전으로 되돌리기", (dialog, which) -> requestRestoreVersion(version))
+                .setNegativeButton("목록", (dialog, which) -> showHistoryDialog())
+                .show();
+        // 일부만 복사해서 쓸 수 있도록 내용을 선택 가능하게 둔다.
+        TextView message = preview.findViewById(android.R.id.message);
+        if (message != null) {
+            message.setTextIsSelectable(true);
+        }
+    }
+
+    private void requestRestoreVersion(NoteVersion version) {
+        if (!hasUnsavedChanges()) {
+            restoreVersion(version);
+            return;
+        }
+        new MaterialAlertDialogBuilder(requireContext())
+                .setTitle("저장하지 않은 내용")
+                .setMessage("지금 편집 중인 내용은 저장되어 있지 않습니다. 이 버전으로 바꾸면 사라집니다.")
+                .setPositiveButton("되돌리기", (dialog, which) -> restoreVersion(version))
+                .setNegativeButton("취소", null)
+                .show();
+    }
+
+    /** 입력란에만 채운다. 저장해야 적용되고, 그때 현재 내용은 다시 이전 버전으로 보관된다. */
+    private void restoreVersion(NoteVersion version) {
+        etTitle.setText(version.getTitle());
+        etContent.setText(version.getContent());
+        Toast.makeText(requireContext(), "이전 버전을 불러왔습니다. 저장해야 적용됩니다.", Toast.LENGTH_LONG).show();
+    }
+
+    private void confirmDeleteHistory() {
+        new MaterialAlertDialogBuilder(requireContext())
+                .setTitle("이력 삭제")
+                .setMessage("이 노트의 이전 버전을 모두 삭제하시겠습니까?\n현재 내용은 그대로 유지됩니다.")
+                .setPositiveButton("삭제", (dialog, which) -> {
+                    dbHelper.deleteNoteHistory(noteId);
+                    Toast.makeText(requireContext(), "이전 버전을 삭제했습니다.", Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("취소", null)
+                .show();
     }
 
     private void toggleLock() {

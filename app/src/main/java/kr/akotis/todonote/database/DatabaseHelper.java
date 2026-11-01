@@ -27,13 +27,16 @@ import java.io.IOException;
 import kr.akotis.todonote.model.DraftItem;
 import kr.akotis.todonote.model.MemoItem;
 import kr.akotis.todonote.model.NoteItem;
+import kr.akotis.todonote.model.NoteVersion;
 import kr.akotis.todonote.model.ToDoItem;
 
 public class DatabaseHelper extends SQLiteOpenHelper {
 
     private static final String DATABASE_NAME = "ToDoNote.db";
-    private static final int DATABASE_VERSION = 13;
+    private static final int DATABASE_VERSION = 14;
     public static final int MAX_STORED_MESSAGES = 30;
+    /** 노트 하나당 보관하는 이전 버전 개수. */
+    public static final int MAX_NOTE_VERSIONS = 30;
 
     /** 임시 저장본의 대상이 아직 저장되지 않은 새 항목임을 나타낸다. 실제 ID는 1부터 시작한다. */
     public static final long DRAFT_NEW_ITEM = 0;
@@ -105,6 +108,22 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             COL_DRAFT_CONTENT + " TEXT, " +
             COL_DRAFT_SAVED_AT + " INTEGER, " +
             "PRIMARY KEY (" + COL_DRAFT_TYPE + ", " + COL_DRAFT_TARGET_ID + "))";
+
+    // Note History 테이블 (노트 수정 전 내용)
+    private static final String TABLE_NOTE_HISTORY = "note_history";
+    private static final String COL_HISTORY_ID = "id";
+    private static final String COL_HISTORY_NOTE_ID = "note_id";
+    private static final String COL_HISTORY_TITLE = "title";
+    private static final String COL_HISTORY_CONTENT = "content";
+    private static final String COL_HISTORY_SAVED_AT = "saved_at";
+    private static final String CREATE_NOTE_HISTORY_TABLE = "CREATE TABLE IF NOT EXISTS " + TABLE_NOTE_HISTORY + " (" +
+            COL_HISTORY_ID + " INTEGER PRIMARY KEY AUTOINCREMENT, " +
+            COL_HISTORY_NOTE_ID + " INTEGER NOT NULL, " +
+            COL_HISTORY_TITLE + " TEXT, " +
+            COL_HISTORY_CONTENT + " TEXT, " +
+            COL_HISTORY_SAVED_AT + " INTEGER)";
+    private static final String CREATE_NOTE_HISTORY_INDEX = "CREATE INDEX IF NOT EXISTS idx_note_history_note_id ON " +
+            TABLE_NOTE_HISTORY + " (" + COL_HISTORY_NOTE_ID + ")";
 
     public DatabaseHelper(Context context) {
         this(context, DATABASE_NAME);
@@ -274,6 +293,9 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         db.execSQL(createMessageTable);
 
         db.execSQL(CREATE_DRAFT_TABLE);
+
+        db.execSQL(CREATE_NOTE_HISTORY_TABLE);
+        db.execSQL(CREATE_NOTE_HISTORY_INDEX);
     }
 
     @Override
@@ -377,6 +399,11 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         if (oldVersion < 13) {
             // 저장하지 않은 편집 내용을 보관하는 테이블 추가
             db.execSQL(CREATE_DRAFT_TABLE);
+        }
+        if (oldVersion < 14) {
+            // 노트 수정 이력 테이블 추가
+            db.execSQL(CREATE_NOTE_HISTORY_TABLE);
+            db.execSQL(CREATE_NOTE_HISTORY_INDEX);
         }
     }
 
@@ -811,15 +838,81 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         // 노트 내용은 항상 평문으로 저장 (암호화하지 않음)
         // 잠금 기능은 접근 인증만 담당하며, 암호화는 내보내기 시에만 적용
         String content = note.getContent();
-        
-        SQLiteDatabase db = this.getWritableDatabase();
-        ContentValues values = new ContentValues();
-        values.put(COL_NOTE_TITLE, note.getTitle());
-        values.put(COL_NOTE_CONTENT, content);
-        values.put(COL_NOTE_UPDATED_AT, System.currentTimeMillis());
-        values.put(COL_NOTE_LOCKED, note.isLocked() ? 1 : 0);
 
-        int result = db.update(TABLE_NOTE, values, COL_NOTE_ID + " = ?", new String[]{String.valueOf(note.getId())});
+        SQLiteDatabase db = this.getWritableDatabase();
+        db.beginTransaction();
+        try {
+            archiveNoteVersion(db, note.getId(), note.getTitle(), content);
+
+            ContentValues values = new ContentValues();
+            values.put(COL_NOTE_TITLE, note.getTitle());
+            values.put(COL_NOTE_CONTENT, content);
+            values.put(COL_NOTE_UPDATED_AT, System.currentTimeMillis());
+            values.put(COL_NOTE_LOCKED, note.isLocked() ? 1 : 0);
+
+            int result = db.update(TABLE_NOTE, values, COL_NOTE_ID + " = ?", new String[]{String.valueOf(note.getId())});
+            db.setTransactionSuccessful();
+            return result;
+        } finally {
+            db.endTransaction();
+            db.close();
+        }
+    }
+
+    /** 제목이나 내용이 바뀔 때만 덮어쓰기 전 내용을 보관하고, 오래된 버전은 정리한다. */
+    private static void archiveNoteVersion(SQLiteDatabase db, long noteId, String newTitle, String newContent) {
+        try (Cursor cursor = db.query(TABLE_NOTE,
+                new String[]{COL_NOTE_TITLE, COL_NOTE_CONTENT, COL_NOTE_UPDATED_AT},
+                COL_NOTE_ID + " = ?", new String[]{String.valueOf(noteId)}, null, null, null)) {
+            if (!cursor.moveToFirst()) {
+                return;
+            }
+            String oldTitle = cursor.getString(0);
+            String oldContent = cursor.getString(1);
+            if (sameText(oldTitle, newTitle) && sameText(oldContent, newContent)) {
+                return;
+            }
+            ContentValues version = new ContentValues();
+            version.put(COL_HISTORY_NOTE_ID, noteId);
+            version.put(COL_HISTORY_TITLE, oldTitle);
+            version.put(COL_HISTORY_CONTENT, oldContent);
+            version.put(COL_HISTORY_SAVED_AT, cursor.isNull(2) ? System.currentTimeMillis() : cursor.getLong(2));
+            db.insertOrThrow(TABLE_NOTE_HISTORY, null, version);
+        }
+        String noteIdArg = String.valueOf(noteId);
+        db.delete(TABLE_NOTE_HISTORY,
+                COL_HISTORY_NOTE_ID + " = ? AND " + COL_HISTORY_ID + " NOT IN (SELECT " + COL_HISTORY_ID +
+                        " FROM " + TABLE_NOTE_HISTORY + " WHERE " + COL_HISTORY_NOTE_ID + " = ? ORDER BY " +
+                        COL_HISTORY_ID + " DESC LIMIT " + MAX_NOTE_VERSIONS + ")",
+                new String[]{noteIdArg, noteIdArg});
+    }
+
+    private static boolean sameText(String a, String b) {
+        return (a != null ? a : "").equals(b != null ? b : "");
+    }
+
+    /** 최신 버전부터 반환한다. */
+    public List<NoteVersion> getNoteHistory(long noteId) {
+        List<NoteVersion> versions = new ArrayList<>();
+        SQLiteDatabase db = this.getReadableDatabase();
+        try (Cursor cursor = db.query(TABLE_NOTE_HISTORY, null, COL_HISTORY_NOTE_ID + " = ?",
+                new String[]{String.valueOf(noteId)}, null, null, COL_HISTORY_ID + " DESC")) {
+            while (cursor.moveToNext()) {
+                versions.add(new NoteVersion(
+                        cursor.getLong(cursor.getColumnIndexOrThrow(COL_HISTORY_ID)),
+                        cursor.getLong(cursor.getColumnIndexOrThrow(COL_HISTORY_NOTE_ID)),
+                        cursor.getString(cursor.getColumnIndexOrThrow(COL_HISTORY_TITLE)),
+                        cursor.getString(cursor.getColumnIndexOrThrow(COL_HISTORY_CONTENT)),
+                        cursor.getLong(cursor.getColumnIndexOrThrow(COL_HISTORY_SAVED_AT))));
+            }
+        }
+        db.close();
+        return versions;
+    }
+
+    public int deleteNoteHistory(long noteId) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        int result = db.delete(TABLE_NOTE_HISTORY, COL_HISTORY_NOTE_ID + " = ?", new String[]{String.valueOf(noteId)});
         db.close();
         return result;
     }
@@ -890,6 +983,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         try {
             int result = db.delete(TABLE_NOTE, COL_NOTE_ID + " = ?", new String[]{String.valueOf(id)});
             removeDraft(db, DRAFT_TYPE_NOTE, id);
+            db.delete(TABLE_NOTE_HISTORY, COL_HISTORY_NOTE_ID + " = ?", new String[]{String.valueOf(id)});
             db.setTransactionSuccessful();
             return result;
         } finally {
@@ -904,10 +998,22 @@ public class DatabaseHelper extends SQLiteOpenHelper {
      */
     public int emptyTrash() {
         SQLiteDatabase db = this.getWritableDatabase();
-        int deletedMemos = db.delete(TABLE_MEMO, COL_MEMO_DELETED_AT + " IS NOT NULL", null);
-        int deletedNotes = db.delete(TABLE_NOTE, COL_NOTE_DELETED_AT + " IS NOT NULL", null);
-        db.close();
-        return deletedMemos + deletedNotes;
+        db.beginTransaction();
+        try {
+            int deletedMemos = db.delete(TABLE_MEMO, COL_MEMO_DELETED_AT + " IS NOT NULL", null);
+            // 영구 삭제한 노트의 이전 내용과 임시 저장본도 함께 지운다.
+            String trashedNoteIds = "(SELECT " + COL_NOTE_ID + " FROM " + TABLE_NOTE + " WHERE " +
+                    COL_NOTE_DELETED_AT + " IS NOT NULL)";
+            db.delete(TABLE_NOTE_HISTORY, COL_HISTORY_NOTE_ID + " IN " + trashedNoteIds, null);
+            db.delete(TABLE_DRAFT, COL_DRAFT_TYPE + " = ? AND " + COL_DRAFT_TARGET_ID + " IN " + trashedNoteIds,
+                    new String[]{DRAFT_TYPE_NOTE});
+            int deletedNotes = db.delete(TABLE_NOTE, COL_NOTE_DELETED_AT + " IS NOT NULL", null);
+            db.setTransactionSuccessful();
+            return deletedMemos + deletedNotes;
+        } finally {
+            db.endTransaction();
+            db.close();
+        }
     }
 
     public NoteItem getNoteById(long id) {
