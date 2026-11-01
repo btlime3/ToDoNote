@@ -27,7 +27,6 @@ import com.google.android.material.textfield.TextInputEditText;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
-import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -44,11 +43,9 @@ import androidx.work.OneTimeWorkRequest;
 import androidx.work.WorkManager;
 
 import kr.akotis.todonote.R;
-import kr.akotis.todonote.adapter.TodayInfoAdapter;
 import kr.akotis.todonote.adapter.ToDoAdapter;
 import kr.akotis.todonote.database.DatabaseHelper;
 import kr.akotis.todonote.model.ToDoItem;
-import kr.akotis.todonote.model.TodayInfoItem;
 import kr.akotis.todonote.widget.ToDoWidgetProvider;
 import kr.akotis.todonote.worker.ToDoNotificationWorker;
 
@@ -72,8 +69,6 @@ public class ToDoFragment extends Fragment {
         tvTodoEmpty = view.findViewById(R.id.tv_todo_empty);
         fabTodo = view.findViewById(R.id.fab_todo);
 
-        setupTodayInfo(view);
-
         // RecyclerView 설정
         todoAdapter = new ToDoAdapter();
         todoAdapter.setDatabaseHelper(dbHelper);
@@ -89,27 +84,6 @@ public class ToDoFragment extends Fragment {
         fabTodo.setOnClickListener(v -> showToDoInputDialog(null));
 
         return view;
-    }
-
-    private void setupTodayInfo(View view) {
-        TextView tvDate = view.findViewById(R.id.tv_today_date);
-        tvDate.setText(new SimpleDateFormat("M월 d일 EEEE", Locale.KOREAN).format(new Date()));
-
-        RecyclerView recyclerInfo = view.findViewById(R.id.recycler_today_info);
-        recyclerInfo.setLayoutManager(new LinearLayoutManager(requireContext()));
-        recyclerInfo.setAdapter(new TodayInfoAdapter(loadTodayInfo()));
-    }
-
-    /**
-     * 오늘의 정보 목록. 지금은 화면 틀을 보여 주는 자리표시 항목이다.
-     * 어떤 정보를 보여 줄지 정해지면 이 메서드가 실제 정보를 돌려주도록 바꾼다.
-     */
-    private List<TodayInfoItem> loadTodayInfo() {
-        List<TodayInfoItem> items = new ArrayList<>();
-        for (int i = 1; i <= 3; i++) {
-            items.add(new TodayInfoItem("준비 중", "오늘의 정보 " + i, "연결할 정보를 정하면 이 자리에 표시됩니다."));
-        }
-        return items;
     }
 
     private void loadToDos() {

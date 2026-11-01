@@ -15,12 +15,20 @@ import com.google.firebase.messaging.RemoteMessage;
 
 import kr.akotis.todonote.R;
 import kr.akotis.todonote.activity.MainActivity;
+import java.util.List;
+
 import kr.akotis.todonote.database.DatabaseHelper;
+import kr.akotis.todonote.database.TodayFeedDatabase;
 import kr.akotis.todonote.model.MessageItem;
+import kr.akotis.todonote.model.TodayItem;
+import kr.akotis.todonote.util.TodayFeedParser;
 
 public class MyFirebaseMessagingService extends FirebaseMessagingService {
 
     public static final String ACTION_MESSAGE_RECEIVED = "kr.akotis.todonote.MESSAGE_RECEIVED";
+    public static final String ACTION_TODAY_UPDATED = "kr.akotis.todonote.TODAY_UPDATED";
+
+    private static final String TYPE_TODAY = "today";
 
     private static final String TAG = "FCMService";
     private static final String CHANNEL_ID = "fcm_notification_channel";
@@ -40,6 +48,12 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
             return;
         }
 
+        // 오늘 화면의 소식은 알림을 띄우지 않고 저장만 한다.
+        if (TYPE_TODAY.equals(remoteMessage.getData().get("type"))) {
+            saveTodayItems(remoteMessage.getData().get("items"));
+            return;
+        }
+
         String title = remoteMessage.getData().get("title");
         String body = remoteMessage.getData().get("body");
 
@@ -53,6 +67,19 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
 
         // 2. 사용자가 볼 수 있게 직접 알림 띄우기 (필수!)
         showNotificationWithMessage(title, body != null ? body : "");
+    }
+
+    private void saveTodayItems(String itemsJson) {
+        try {
+            long now = System.currentTimeMillis();
+            List<TodayItem> items = TodayFeedParser.parse(itemsJson, now);
+            if (!items.isEmpty()) {
+                TodayFeedDatabase.getInstance(this).save(items, now);
+                sendBroadcast(new Intent(ACTION_TODAY_UPDATED).setPackage(getPackageName()));
+            }
+        } catch (RuntimeException e) {
+            Log.e(TAG, "Failed to save today items", e);
+        }
     }
 
     /**

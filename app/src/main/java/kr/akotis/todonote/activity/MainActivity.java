@@ -74,6 +74,7 @@ import kr.akotis.todonote.fragment.MessageFragment;
 import kr.akotis.todonote.fragment.NoteFragment;
 import kr.akotis.todonote.service.MyFirebaseMessagingService;
 import kr.akotis.todonote.fragment.ToDoFragment;
+import kr.akotis.todonote.fragment.TodayFragment;
 import kr.akotis.todonote.fragment.TrashFragment;
 
 import com.google.firebase.messaging.FirebaseMessaging;
@@ -233,7 +234,7 @@ public class MainActivity extends AppCompatActivity {
                     .addToBackStack(null)
                     .commit();
         } else if (toToDo) {
-            bottomNav.setSelectedItemId(R.id.nav_todo);
+            loadFragment(new ToDoFragment());
         } else {
             showMessages();
         }
@@ -253,7 +254,9 @@ public class MainActivity extends AppCompatActivity {
         notificationIntentPending = false;
         String fragmentName = getIntent().getStringExtra("fragment");
         if ("todo".equals(fragmentName)) {
-            bottomNav.setSelectedItemId(R.id.nav_todo);
+            // 뒤로 가면 메모 탭으로 돌아가도록 탭 표시만 맞춘다.
+            selectTabWithoutLoading(R.id.nav_memo);
+            loadFragment(new ToDoFragment());
         } else if ("message".equals(fragmentName)) {
             // 알림 화면에서 뒤로 가면 메모 탭으로 돌아가도록 탭 표시만 맞춘다.
             selectTabWithoutLoading(R.id.nav_memo);
@@ -533,9 +536,10 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        // 손상은 화면이 DB를 처음 열 때 발견되므로 화면이 만들어진 뒤에 확인한다.
+        // 손상은 DB를 처음 열 때 발견된다. 오늘 화면처럼 메인 DB를 쓰지 않는 화면도 있으므로 여기서 먼저 연다.
         if (!databaseDamageChecked) {
             databaseDamageChecked = true;
+            dbHelper.getReadableDatabase();
             notifyIfDatabaseWasDamaged();
         }
         updateNotificationBadge();
@@ -747,7 +751,9 @@ public class MainActivity extends AppCompatActivity {
 
     // 상단 NavBar 목록 메뉴들
     private void handleDrawerItemClick(int itemId) {
-        if (itemId == R.id.nav_completed_todo) {
+        if (itemId == R.id.nav_todo) {
+            loadFragment(new ToDoFragment());
+        } else if (itemId == R.id.nav_completed_todo) {
             loadFragment(new CompletedToDoFragment());
         } else if (itemId == R.id.nav_export) {
             exportDatabase();
@@ -832,6 +838,7 @@ public class MainActivity extends AppCompatActivity {
                 Fragment current = fragmentManager.findFragmentById(R.id.fragment_container);
                 boolean openedFromMenu = current instanceof TrashFragment
                         || current instanceof MessageFragment
+                        || current instanceof ToDoFragment
                         || current instanceof CompletedToDoFragment;
                 if (openedFromMenu && fragmentManager.getBackStackEntryCount() == 0) {
                     bottomNav.setSelectedItemId(bottomNav.getSelectedItemId());
@@ -846,8 +853,8 @@ public class MainActivity extends AppCompatActivity {
 
     // 하단 NavBar 선택 작업
     private Fragment getFragmentForItem(int itemId) {
-        if (itemId == R.id.nav_todo) {
-            return new ToDoFragment();
+        if (itemId == R.id.nav_today) {
+            return new TodayFragment();
         } else if (itemId == R.id.nav_memo) {
             return new MemoFragment();
         } else if (itemId == R.id.nav_note) {
