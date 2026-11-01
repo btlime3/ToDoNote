@@ -7,6 +7,7 @@ public class NoteItem {
     private long createdAt;
     private long updatedAt;
     private long deletedAt;
+    private boolean pinned;
     private boolean isLocked;
     private int order;
 
@@ -58,6 +59,14 @@ public class NoteItem {
 
     public void setUpdatedAt(long updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public boolean isPinned() {
+        return pinned;
+    }
+
+    public void setPinned(boolean pinned) {
+        this.pinned = pinned;
     }
 
     public long getDeletedAt() {

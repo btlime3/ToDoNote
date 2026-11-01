@@ -104,6 +104,10 @@ public class MemoFragment extends Fragment {
         memoAdapter = new MemoAdapter();
         recyclerMemo.setLayoutManager(new LinearLayoutManager(requireContext()));
         recyclerMemo.setAdapter(memoAdapter);
+        memoAdapter.setOnPinClickListener(memo -> {
+            dbHelper.setMemoPinned(memo.getId(), !memo.isPinned());
+            loadMemos();
+        });
 
         // 스와이프 제스처 설정
         setupSwipeGesture();
@@ -372,17 +376,31 @@ public class MemoFragment extends Fragment {
     private void setupSwipeGesture() {
         ItemTouchHelper.SimpleCallback itemTouchHelperCallback = new ItemTouchHelper.SimpleCallback(
                 ItemTouchHelper.UP | ItemTouchHelper.DOWN, ItemTouchHelper.LEFT | ItemTouchHelper.RIGHT) {
+            private boolean orderChanged;
+
+            @Override
+            public boolean canDropOver(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder current, @NonNull RecyclerView.ViewHolder target) {
+                // 고정한 메모와 고정하지 않은 메모는 서로 섞이지 않는다.
+                MemoItem from = memoAdapter.getMemoAt(current.getBindingAdapterPosition());
+                MemoItem to = memoAdapter.getMemoAt(target.getBindingAdapterPosition());
+                return from != null && to != null && from.isPinned() == to.isPinned();
+            }
+
             @Override
             public boolean onMove(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder viewHolder, @NonNull RecyclerView.ViewHolder target) {
-                int fromPosition = viewHolder.getAdapterPosition();
-                int toPosition = target.getAdapterPosition();
-                
-                memoAdapter.moveItem(fromPosition, toPosition);
-                
-                // 순서 변경 후 데이터베이스 업데이트
-                dbHelper.updateMemoOrder(memoAdapter.getMemoList());
-                
+                memoAdapter.moveItem(viewHolder.getBindingAdapterPosition(), target.getBindingAdapterPosition());
+                orderChanged = true;
                 return true;
+            }
+
+            @Override
+            public void clearView(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder viewHolder) {
+                super.clearView(recyclerView, viewHolder);
+                // 끌어다 놓은 뒤 한 번만 저장한다.
+                if (orderChanged) {
+                    orderChanged = false;
+                    dbHelper.updateMemoOrder(memoAdapter.getMemoList());
+                }
             }
 
             @Override

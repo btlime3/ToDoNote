@@ -104,17 +104,37 @@ public class NoteFragment extends Fragment {
         ItemTouchHelper.SimpleCallback itemTouchHelperCallback = new ItemTouchHelper.SimpleCallback(
                 ItemTouchHelper.UP | ItemTouchHelper.DOWN | ItemTouchHelper.LEFT | ItemTouchHelper.RIGHT,
                 0) {
+            private boolean orderChanged;
+
+            @Override
+            public boolean isLongPressDragEnabled() {
+                // 검색 결과는 일부만 보이므로 순서를 바꾸면 전체 순서가 어긋난다.
+                return SearchQuery.parse(etSearch.getText() != null ? etSearch.getText().toString() : "").isEmpty();
+            }
+
+            @Override
+            public boolean canDropOver(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder current, @NonNull RecyclerView.ViewHolder target) {
+                // 고정한 노트와 고정하지 않은 노트는 서로 섞이지 않는다.
+                NoteItem from = noteAdapter.getNoteAt(current.getBindingAdapterPosition());
+                NoteItem to = noteAdapter.getNoteAt(target.getBindingAdapterPosition());
+                return from != null && to != null && from.isPinned() == to.isPinned();
+            }
+
             @Override
             public boolean onMove(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder viewHolder, @NonNull RecyclerView.ViewHolder target) {
-                int fromPosition = viewHolder.getAdapterPosition();
-                int toPosition = target.getAdapterPosition();
-                
-                noteAdapter.moveItem(fromPosition, toPosition);
-                
-                // 순서 변경 후 데이터베이스 업데이트
-                dbHelper.updateNoteOrder(noteAdapter.getNoteList());
-                
+                noteAdapter.moveItem(viewHolder.getBindingAdapterPosition(), target.getBindingAdapterPosition());
+                orderChanged = true;
                 return true;
+            }
+
+            @Override
+            public void clearView(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder viewHolder) {
+                super.clearView(recyclerView, viewHolder);
+                // 끌어다 놓은 뒤 한 번만 저장한다.
+                if (orderChanged) {
+                    orderChanged = false;
+                    dbHelper.updateNoteOrder(noteAdapter.getNoteList());
+                }
             }
 
             @Override

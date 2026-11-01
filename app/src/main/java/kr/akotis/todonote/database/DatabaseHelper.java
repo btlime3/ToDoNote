@@ -33,7 +33,7 @@ import kr.akotis.todonote.model.ToDoItem;
 public class DatabaseHelper extends SQLiteOpenHelper {
 
     private static final String DATABASE_NAME = "ToDoNote.db";
-    private static final int DATABASE_VERSION = 14;
+    private static final int DATABASE_VERSION = 15;
     public static final int MAX_STORED_MESSAGES = 30;
     /** 노트 하나당 보관하는 이전 버전 개수. */
     public static final int MAX_NOTE_VERSIONS = 30;
@@ -71,6 +71,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     private static final String COL_MEMO_UPDATED_AT = "updated_at";
     private static final String COL_MEMO_ORDER = "memo_order";
     private static final String COL_MEMO_DELETED_AT = "deleted_at";
+    private static final String COL_MEMO_PINNED = "pinned";
 
     // Note 테이블
     private static final String TABLE_NOTE = "note";
@@ -82,6 +83,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     private static final String COL_NOTE_DELETED_AT = "deleted_at";
     private static final String COL_NOTE_LOCKED = "locked";
     private static final String COL_NOTE_ORDER = "note_order";
+    private static final String COL_NOTE_PINNED = "pinned";
 
     // Message 테이블 (FCM 알림)
     private static final String TABLE_MESSAGE = "message";
@@ -260,7 +262,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 COL_MEMO_CREATED_AT + " INTEGER, " +
                 COL_MEMO_UPDATED_AT + " INTEGER, " +
                 COL_MEMO_ORDER + " INTEGER DEFAULT 0, " +
-                COL_MEMO_DELETED_AT + " INTEGER)";
+                COL_MEMO_DELETED_AT + " INTEGER, " +
+                COL_MEMO_PINNED + " INTEGER DEFAULT 0)";
         db.execSQL(createMemoTable);
 
         // Note 테이블 생성
@@ -272,7 +275,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 COL_NOTE_UPDATED_AT + " INTEGER, " +
                 COL_NOTE_DELETED_AT + " INTEGER, " +
                 COL_NOTE_LOCKED + " INTEGER DEFAULT 0, " +
-                COL_NOTE_ORDER + " INTEGER DEFAULT 0)";
+                COL_NOTE_ORDER + " INTEGER DEFAULT 0, " +
+                COL_NOTE_PINNED + " INTEGER DEFAULT 0)";
         db.execSQL(createNoteTable);
 
         // 암호 설정 테이블 생성
@@ -404,6 +408,11 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             // 노트 수정 이력 테이블 추가
             db.execSQL(CREATE_NOTE_HISTORY_TABLE);
             db.execSQL(CREATE_NOTE_HISTORY_INDEX);
+        }
+        if (oldVersion < 15) {
+            // 메모와 노트 고정 컬럼 추가. 기존 항목은 고정되지 않은 상태로 시작한다.
+            db.execSQL("ALTER TABLE " + TABLE_MEMO + " ADD COLUMN " + COL_MEMO_PINNED + " INTEGER DEFAULT 0");
+            db.execSQL("ALTER TABLE " + TABLE_NOTE + " ADD COLUMN " + COL_NOTE_PINNED + " INTEGER DEFAULT 0");
         }
     }
 
@@ -666,6 +675,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         if (deletedAtIndex >= 0 && !cursor.isNull(deletedAtIndex)) {
             memo.setDeletedAt(cursor.getLong(deletedAtIndex));
         }
+        int pinnedIndex = cursor.getColumnIndex(COL_MEMO_PINNED);
+        memo.setPinned(pinnedIndex >= 0 && cursor.getInt(pinnedIndex) == 1);
         return memo;
     }
 
@@ -686,7 +697,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         List<MemoItem> memoList = new ArrayList<>();
         SQLiteDatabase db = this.getReadableDatabase();
         String selection = COL_MEMO_DELETED_AT + " IS NULL";
-        Cursor cursor = db.query(TABLE_MEMO, null, selection, null, null, null, COL_MEMO_ORDER + " ASC");
+        Cursor cursor = db.query(TABLE_MEMO, null, selection, null, null, null,
+                COL_MEMO_PINNED + " DESC, " + COL_MEMO_ORDER + " ASC");
 
         if (cursor.moveToFirst()) {
             do {
@@ -705,6 +717,16 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         values.put(COL_MEMO_UPDATED_AT, System.currentTimeMillis());
 
         int result = db.update(TABLE_MEMO, values, COL_MEMO_ID + " = ?", new String[]{String.valueOf(memo.getId())});
+        db.close();
+        return result;
+    }
+
+    /** 고정 여부만 바꾼다. 수정 시각은 내용이 바뀐 때를 나타내므로 그대로 둔다. */
+    public int setMemoPinned(long id, boolean pinned) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        ContentValues values = new ContentValues();
+        values.put(COL_MEMO_PINNED, pinned ? 1 : 0);
+        int result = db.update(TABLE_MEMO, values, COL_MEMO_ID + " = ?", new String[]{String.valueOf(id)});
         db.close();
         return result;
     }
@@ -800,33 +822,39 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         return id;
     }
 
+    private NoteItem cursorToNote(Cursor cursor) {
+        NoteItem note = new NoteItem();
+        note.setId(cursor.getLong(cursor.getColumnIndexOrThrow(COL_NOTE_ID)));
+        note.setTitle(cursor.getString(cursor.getColumnIndexOrThrow(COL_NOTE_TITLE)));
+        // 노트 내용은 평문으로 저장된다. 잠긴 노트의 내용을 가리는 것은 화면의 몫이다.
+        note.setContent(cursor.getString(cursor.getColumnIndexOrThrow(COL_NOTE_CONTENT)));
+        note.setCreatedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_NOTE_CREATED_AT)));
+        note.setUpdatedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_NOTE_UPDATED_AT)));
+        int deletedAtIndex = cursor.getColumnIndex(COL_NOTE_DELETED_AT);
+        if (deletedAtIndex >= 0 && !cursor.isNull(deletedAtIndex)) {
+            note.setDeletedAt(cursor.getLong(deletedAtIndex));
+        }
+        int lockedIndex = cursor.getColumnIndex(COL_NOTE_LOCKED);
+        note.setLocked(lockedIndex >= 0 && cursor.getInt(lockedIndex) == 1);
+        int orderIndex = cursor.getColumnIndex(COL_NOTE_ORDER);
+        if (orderIndex >= 0) {
+            note.setOrder(cursor.getInt(orderIndex));
+        }
+        int pinnedIndex = cursor.getColumnIndex(COL_NOTE_PINNED);
+        note.setPinned(pinnedIndex >= 0 && cursor.getInt(pinnedIndex) == 1);
+        return note;
+    }
+
     public List<NoteItem> getAllNotes() {
         List<NoteItem> noteList = new ArrayList<>();
         SQLiteDatabase db = this.getReadableDatabase();
         String selection = COL_NOTE_DELETED_AT + " IS NULL";
-        Cursor cursor = db.query(TABLE_NOTE, null, selection, null, null, null, COL_NOTE_ORDER + " ASC");
+        Cursor cursor = db.query(TABLE_NOTE, null, selection, null, null, null,
+                COL_NOTE_PINNED + " DESC, " + COL_NOTE_ORDER + " ASC");
 
         if (cursor.moveToFirst()) {
             do {
-                NoteItem note = new NoteItem();
-                note.setId(cursor.getLong(cursor.getColumnIndexOrThrow(COL_NOTE_ID)));
-                note.setTitle(cursor.getString(cursor.getColumnIndexOrThrow(COL_NOTE_TITLE)));
-                note.setContent(cursor.getString(cursor.getColumnIndexOrThrow(COL_NOTE_CONTENT)));
-                note.setCreatedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_NOTE_CREATED_AT)));
-                note.setUpdatedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_NOTE_UPDATED_AT)));
-                int deletedAtIndex = cursor.getColumnIndex(COL_NOTE_DELETED_AT);
-                if (deletedAtIndex >= 0 && !cursor.isNull(deletedAtIndex)) {
-                    note.setDeletedAt(cursor.getLong(deletedAtIndex));
-                }
-                int lockedIndex = cursor.getColumnIndex(COL_NOTE_LOCKED);
-                if (lockedIndex >= 0) {
-                    note.setLocked(cursor.getInt(lockedIndex) == 1);
-                }
-                int orderIndex = cursor.getColumnIndex(COL_NOTE_ORDER);
-                if (orderIndex >= 0) {
-                    note.setOrder(cursor.getInt(orderIndex));
-                }
-                noteList.add(note);
+                noteList.add(cursorToNote(cursor));
             } while (cursor.moveToNext());
         }
         cursor.close();
@@ -917,6 +945,16 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         return result;
     }
 
+    /** 고정 여부만 바꾼다. 수정 시각은 내용이 바뀐 때를 나타내므로 그대로 둔다. */
+    public int setNotePinned(long id, boolean pinned) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        ContentValues values = new ContentValues();
+        values.put(COL_NOTE_PINNED, pinned ? 1 : 0);
+        int result = db.update(TABLE_NOTE, values, COL_NOTE_ID + " = ?", new String[]{String.valueOf(id)});
+        db.close();
+        return result;
+    }
+
     public int deleteNote(long id) {
         SQLiteDatabase db = this.getWritableDatabase();
         db.beginTransaction();
@@ -941,26 +979,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 
         if (cursor.moveToFirst()) {
             do {
-                NoteItem note = new NoteItem();
-                note.setId(cursor.getLong(cursor.getColumnIndexOrThrow(COL_NOTE_ID)));
-                note.setTitle(cursor.getString(cursor.getColumnIndexOrThrow(COL_NOTE_TITLE)));
-                
-                String content = cursor.getString(cursor.getColumnIndexOrThrow(COL_NOTE_CONTENT));
-                int lockedIndex = cursor.getColumnIndex(COL_NOTE_LOCKED);
-                boolean isLocked = lockedIndex >= 0 && cursor.getInt(lockedIndex) == 1;
-                
-                // 휴지통에서는 잠금된 노트의 내용을 복호화하지 않음 (보안 유지)
-                // 암호화된 상태로 유지하여 휴지통에서 내용이 보이지 않도록 함
-                note.setContent(content);
-                
-                note.setCreatedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_NOTE_CREATED_AT)));
-                note.setUpdatedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_NOTE_UPDATED_AT)));
-                int deletedAtIndex = cursor.getColumnIndex(COL_NOTE_DELETED_AT);
-                if (deletedAtIndex >= 0 && !cursor.isNull(deletedAtIndex)) {
-                    note.setDeletedAt(cursor.getLong(deletedAtIndex));
-                }
-                note.setLocked(isLocked);
-                noteList.add(note);
+                noteList.add(cursorToNote(cursor));
             } while (cursor.moveToNext());
         }
         cursor.close();
@@ -1023,19 +1042,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 
         NoteItem note = null;
         if (cursor.moveToFirst()) {
-            note = new NoteItem();
-            note.setId(cursor.getLong(cursor.getColumnIndexOrThrow(COL_NOTE_ID)));
-            note.setTitle(cursor.getString(cursor.getColumnIndexOrThrow(COL_NOTE_TITLE)));
-            
-            // 노트 내용은 항상 평문으로 저장되어 있으므로 복호화 불필요
-            String content = cursor.getString(cursor.getColumnIndexOrThrow(COL_NOTE_CONTENT));
-            int lockedIndex = cursor.getColumnIndex(COL_NOTE_LOCKED);
-            boolean isLocked = lockedIndex >= 0 && cursor.getInt(lockedIndex) == 1;
-            
-            note.setContent(content);
-            note.setCreatedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_NOTE_CREATED_AT)));
-            note.setUpdatedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_NOTE_UPDATED_AT)));
-            note.setLocked(isLocked);
+            note = cursorToNote(cursor);
         }
 
         cursor.close();

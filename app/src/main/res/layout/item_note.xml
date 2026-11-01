@@ -44,6 +44,17 @@
                 android:visibility="gone"
                 android:contentDescription="잠금" />
 
+            <!-- 고정 표시 -->
+            <ImageView
+                android:id="@+id/iv_note_pin"
+                android:layout_width="16dp"
+                android:layout_height="16dp"
+                android:layout_gravity="top|end"
+                android:contentDescription="고정됨"
+                android:src="@drawable/ic_pin"
+                android:visibility="gone"
+                app:tint="@color/color_primary_text" />
+
         </FrameLayout>
 
     </com.google.android.material.card.MaterialCardView>

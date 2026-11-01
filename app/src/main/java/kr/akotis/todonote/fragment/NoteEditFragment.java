@@ -49,6 +49,7 @@ public class NoteEditFragment extends Fragment {
     private ImageButton btnDelete;
     private ImageButton btnLock;
     private ImageButton btnHistory;
+    private ImageButton btnPin;
     private DatabaseHelper dbHelper;
     private NoteItem editingNote;
     private long noteId = -1;
@@ -107,6 +108,7 @@ public class NoteEditFragment extends Fragment {
         btnDelete = view.findViewById(R.id.btn_delete);
         btnLock = view.findViewById(R.id.btn_lock);
         btnHistory = view.findViewById(R.id.btn_history);
+        btnPin = view.findViewById(R.id.btn_pin);
 
         // note_id 확인
         if (noteId != -1) {
@@ -123,6 +125,8 @@ public class NoteEditFragment extends Fragment {
                 btnLock.setVisibility(View.VISIBLE);
                 updateLockButton();
                 btnHistory.setVisibility(View.VISIBLE);
+                btnPin.setVisibility(View.VISIBLE);
+                updatePinButton();
             }
         }
 
@@ -140,6 +144,9 @@ public class NoteEditFragment extends Fragment {
 
         // 이전 버전 버튼 클릭
         btnHistory.setOnClickListener(v -> showHistoryDialog());
+
+        // 고정 버튼 클릭
+        btnPin.setOnClickListener(v -> togglePin());
 
         return view;
     }
@@ -304,6 +311,26 @@ public class NoteEditFragment extends Fragment {
             String label = locked ? "잠금 해제" : "잠금";
             btnLock.setContentDescription(label);
             btnLock.setTooltipText(label);
+        }
+    }
+
+    private void updatePinButton() {
+        if (editingNote != null) {
+            boolean pinned = editingNote.isPinned();
+            btnPin.setImageResource(pinned ? R.drawable.ic_pin : R.drawable.ic_pin_outline);
+            String label = pinned ? "고정 해제" : "고정";
+            btnPin.setContentDescription(label);
+            btnPin.setTooltipText(label);
+        }
+    }
+
+    /** 고정은 내용과 별개이므로 편집 중인 내용을 저장하지 않고 바로 적용한다. */
+    private void togglePin() {
+        boolean pinned = !editingNote.isPinned();
+        if (dbHelper.setNotePinned(noteId, pinned) > 0) {
+            editingNote.setPinned(pinned);
+            updatePinButton();
+            Toast.makeText(requireContext(), pinned ? "노트를 고정했습니다." : "노트 고정을 해제했습니다.", Toast.LENGTH_SHORT).show();
         }
     }
 
