@@ -13,7 +13,7 @@ import kr.akotis.todonote.model.TodayItem;
 
 /**
  * FCM 데이터 메시지의 items 값을 읽는다.
- * 형식: [{"c":"분류","s":"출처","t":"제목","d":"요약","u":"https://...","p":발행시각(초)}]
+ * 형식: [{"c":"분류","s":"출처","t":"제목","d":"요약","u":"https://...","i":"썸네일 주소(선택)","p":발행시각(초)}]
  * 필드 이름을 줄인 것은 FCM 메시지 크기 제한(4KB) 때문이다.
  */
 public final class TodayFeedParser {
@@ -48,13 +48,13 @@ public final class TodayFeedParser {
             if (title.isEmpty() || !isWebUrl(url)) {
                 continue;
             }
-            String category = clip(text(object, "c"), MAX_LABEL_LENGTH);
             items.add(new TodayItem(
                     url,
-                    category.isEmpty() ? TodayItem.CATEGORY_NEWS : category,
+                    TodayItem.normalizeCategory(text(object, "c")),
                     clip(text(object, "s"), MAX_LABEL_LENGTH),
                     title,
                     clip(text(object, "d"), MAX_SUMMARY_LENGTH),
+                    imageUrl(text(object, "i")),
                     publishedAtMillis(object.optLong("p", 0), now)));
         }
         return items;
@@ -69,6 +69,13 @@ public final class TodayFeedParser {
     private static boolean isWebUrl(String url) {
         String lower = url.toLowerCase(Locale.ROOT);
         return url.length() <= MAX_URL_LENGTH && (lower.startsWith("https://") || lower.startsWith("http://"));
+    }
+
+    /** 앱이 직접 내려받는 주소이므로 https만 받는다. */
+    private static String imageUrl(String url) {
+        String trimmed = url.trim();
+        boolean usable = trimmed.length() <= MAX_URL_LENGTH && trimmed.toLowerCase(Locale.ROOT).startsWith("https://");
+        return usable ? trimmed : "";
     }
 
     /** 날짜가 없거나 미래이면 받은 시각으로 정렬되고 표시되도록 0을 돌려준다. */

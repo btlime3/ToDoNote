@@ -20,8 +20,7 @@ import androidx.fragment.app.Fragment;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
-import com.google.android.material.chip.Chip;
-import com.google.android.material.chip.ChipGroup;
+import com.google.android.material.tabs.TabLayout;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -34,30 +33,22 @@ import kr.akotis.todonote.database.TodayFeedDatabase;
 import kr.akotis.todonote.model.TodayItem;
 import kr.akotis.todonote.service.MyFirebaseMessagingService;
 
-/** 서버가 보낸 최신 오픈소스, 연구, AI, 보안, IT 소식을 보여 주는 화면. */
+/** 서버가 보낸 소식을 오늘 소식과 새로운 기술 두 탭으로 나누어 보여 준다. */
 public class TodayFragment extends Fragment {
     private static final String PREFS = "today_screen";
-    private static final String KEY_CATEGORY = "category";
-    /** 전체 칩을 나타낸다. */
-    private static final String CATEGORY_ALL = "all";
-    /** 한글과 영문의 글자 높이가 달라 칩 높이를 고정한다. */
-    private static final int CHIP_HEIGHT_DP = 36;
-    private static final String[] CATEGORIES = {
-            CATEGORY_ALL,
-            TodayItem.CATEGORY_OPENSOURCE,
-            TodayItem.CATEGORY_RESEARCH,
-            TodayItem.CATEGORY_AI,
-            TodayItem.CATEGORY_SECURITY,
-            TodayItem.CATEGORY_NEWS,
-    };
+    private static final String KEY_TAB = "tab";
+    private static final int TAB_NEWS = 0;
+    private static final int TAB_TECH = 1;
 
     private TodayFeedDatabase database;
-    private TodayFeedAdapter adapter;
-    private RecyclerView recycler;
-    private TextView tvDate;
-    private TextView tvLastReceived;
+    private TabLayout tabs;
+    private RecyclerView recyclerNews;
+    private RecyclerView recyclerTech;
+    private TodayFeedAdapter newsAdapter;
+    private TodayFeedAdapter techAdapter;
     private TextView tvEmpty;
-    private String selectedCategory;
+    private boolean newsEmpty;
+    private boolean techEmpty;
 
     /** 화면을 보고 있는 동안 도착한 소식을 바로 반영한다. */
     private final BroadcastReceiver updateReceiver = new BroadcastReceiver() {
@@ -71,54 +62,44 @@ public class TodayFragment extends Fragment {
     public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
         View view = inflater.inflate(R.layout.fragment_today, container, false);
         database = TodayFeedDatabase.getInstance(requireContext());
-        tvDate = view.findViewById(R.id.tv_today_date);
-        tvLastReceived = view.findViewById(R.id.tv_today_last_received);
         tvEmpty = view.findViewById(R.id.tv_today_empty);
+        tabs = view.findViewById(R.id.tabs_today);
 
-        adapter = new TodayFeedAdapter(this::openItem);
-        recycler = view.findViewById(R.id.recycler_today);
-        recycler.setLayoutManager(new LinearLayoutManager(requireContext()));
-        recycler.setAdapter(adapter);
+        // 탭마다 목록을 따로 두어 다른 탭을 보고 돌아와도 읽던 위치가 그대로 있다.
+        recyclerNews = view.findViewById(R.id.recycler_today_news);
+        recyclerTech = view.findViewById(R.id.recycler_today_tech);
+        newsAdapter = new TodayFeedAdapter((item, position) -> openItem(item, newsAdapter, position));
+        techAdapter = new TodayFeedAdapter((item, position) -> openItem(item, techAdapter, position));
+        recyclerNews.setLayoutManager(new LinearLayoutManager(requireContext()));
+        recyclerTech.setLayoutManager(new LinearLayoutManager(requireContext()));
+        recyclerNews.setAdapter(newsAdapter);
+        recyclerTech.setAdapter(techAdapter);
 
-        setupCategoryChips(view.findViewById(R.id.chip_group_today));
+        setupTabs();
         return view;
     }
 
-    private void setupCategoryChips(ChipGroup group) {
+    private void setupTabs() {
         SharedPreferences prefs = requireContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        selectedCategory = prefs.getString(KEY_CATEGORY, CATEGORY_ALL);
-        boolean selectedExists = false;
-        for (String category : CATEGORIES) {
-            Chip chip = new Chip(requireContext());
-            chip.setId(View.generateViewId());
-            chip.setText(CATEGORY_ALL.equals(category) ? "전체" : TodayItem.categoryLabel(category));
-            chip.setTag(category);
-            chip.setCheckable(true);
-            chip.setCheckedIconVisible(false);
-            chip.setEnsureMinTouchTargetSize(false);
-            chip.setChipMinHeight(CHIP_HEIGHT_DP * getResources().getDisplayMetrics().density);
-            // 시스템이 복원하는 값이 아니라 저장해 둔 분류를 기준으로 선택한다.
-            chip.setSaveEnabled(false);
-            group.addView(chip);
-            if (category.equals(selectedCategory)) {
-                group.check(chip.getId());
-                selectedExists = true;
-            }
+        TabLayout.Tab saved = tabs.getTabAt(prefs.getInt(KEY_TAB, TAB_NEWS));
+        if (saved != null) {
+            saved.select();
         }
-        if (!selectedExists) {
-            selectedCategory = CATEGORY_ALL;
-            group.check(group.getChildAt(0).getId());
-        }
-        group.setOnCheckedStateChangeListener((chipGroup, checkedIds) -> {
-            if (checkedIds.isEmpty()) {
-                return;
+        tabs.addOnTabSelectedListener(new TabLayout.OnTabSelectedListener() {
+            @Override
+            public void onTabSelected(TabLayout.Tab tab) {
+                prefs.edit().putInt(KEY_TAB, tab.getPosition()).apply();
+                showSelectedTab();
             }
-            Chip chip = chipGroup.findViewById(checkedIds.get(0));
-            selectedCategory = (String) chip.getTag();
-            prefs.edit().putString(KEY_CATEGORY, selectedCategory).apply();
-            loadItems();
-            // 칩은 목록 밖에 있어 스크롤한 채로 누를 수 있다. 다른 분류는 처음부터 보여 준다.
-            recycler.scrollToPosition(0);
+
+            @Override
+            public void onTabUnselected(TabLayout.Tab tab) {
+            }
+
+            @Override
+            public void onTabReselected(TabLayout.Tab tab) {
+                (tab.getPosition() == TAB_TECH ? recyclerTech : recyclerNews).smoothScrollToPosition(0);
+            }
         });
     }
 
@@ -143,26 +124,27 @@ public class TodayFragment extends Fragment {
     }
 
     private void loadItems() {
-        // 화면을 열어 둔 채 날짜가 바뀌어도 돌아왔을 때 맞도록 매번 쓴다.
-        tvDate.setText(new SimpleDateFormat("M월 d일 EEEE", Locale.KOREAN).format(new Date()));
-
-        List<TodayItem> items = database.getItems(CATEGORY_ALL.equals(selectedCategory) ? null : selectedCategory);
-        adapter.setItems(items);
-
-        long lastReceived = database.getLastReceivedAt();
-        tvLastReceived.setText(lastReceived > 0
-                ? "마지막 수신 " + new SimpleDateFormat("M월 d일 a h:mm", Locale.KOREAN).format(new Date(lastReceived))
-                : "");
-
-        tvEmpty.setVisibility(items.isEmpty() ? View.VISIBLE : View.GONE);
-        if (items.isEmpty()) {
-            tvEmpty.setText(lastReceived > 0
-                    ? "이 분류에 받은 소식이 없습니다."
-                    : "아직 받은 소식이 없습니다.\n서버에서 보내면 여기에 표시됩니다.");
-        }
+        long lastReceivedAt = database.getLastReceivedAt();
+        String lastReceived = lastReceivedAt > 0
+                ? new SimpleDateFormat("M월 d일 a h:mm 수신", Locale.KOREAN).format(new Date(lastReceivedAt))
+                : "";
+        List<TodayItem> news = database.getItems(TodayItem.CATEGORY_NEWS);
+        List<TodayItem> tech = database.getItems(TodayItem.CATEGORY_TECH);
+        newsAdapter.setItems(news, lastReceived);
+        techAdapter.setItems(tech, lastReceived);
+        newsEmpty = news.isEmpty();
+        techEmpty = tech.isEmpty();
+        showSelectedTab();
     }
 
-    private void openItem(TodayItem item, int position) {
+    private void showSelectedTab() {
+        boolean techSelected = tabs.getSelectedTabPosition() == TAB_TECH;
+        recyclerNews.setVisibility(techSelected ? View.GONE : View.VISIBLE);
+        recyclerTech.setVisibility(techSelected ? View.VISIBLE : View.GONE);
+        tvEmpty.setVisibility((techSelected ? techEmpty : newsEmpty) ? View.VISIBLE : View.GONE);
+    }
+
+    private void openItem(TodayItem item, TodayFeedAdapter adapter, int position) {
         if (!item.isRead()) {
             database.markRead(item.getId());
             item.setRead(true);

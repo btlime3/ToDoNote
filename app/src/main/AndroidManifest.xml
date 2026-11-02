@@ -3,6 +3,7 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Android 13 (API 33) 이상에서 알림 권한 필요 -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     
     <!-- WorkManager 백그라운드 실행을 위한 권한 -->

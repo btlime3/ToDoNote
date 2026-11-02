@@ -2,9 +2,11 @@ package kr.akotis.todonote.database;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import android.content.Context;
+import android.database.sqlite.SQLiteDatabase;
 
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
@@ -45,7 +47,7 @@ public class TodayFeedDatabaseTest {
     }
 
     private static TodayItem item(String url, String category, long publishedAt) {
-        return new TodayItem(url, category, "출처", "제목 " + url, "요약", publishedAt);
+        return new TodayItem(url, category, "출처", "제목 " + url, "요약", "", publishedAt);
     }
 
     @Test
@@ -63,10 +65,56 @@ public class TodayFeedDatabaseTest {
         List<TodayItem> items = TodayFeedParser.parse(json, NOW);
 
         assertEquals(2, items.size());
-        assertEquals("security", items.get(0).getCategory());
+        assertEquals(TodayItem.CATEGORY_NEWS, items.get(0).getCategory());
         assertEquals(1_700_000_000_000L, items.get(0).getPublishedAt());
         assertEquals(TodayItem.CATEGORY_NEWS, items.get(1).getCategory());
         assertEquals("미래 날짜는 쓰지 않는다", 0, items.get(1).getPublishedAt());
+    }
+
+    @Test
+    public void parserMapsCategoriesToTwoTabsAndKeepsOnlyHttpsImages() {
+        String json = "[{\"c\":\"tech\",\"t\":\"1\",\"u\":\"https://e.com/1\",\"i\":\"https://e.com/1.jpg\"},"
+                + "{\"c\":\"research\",\"t\":\"2\",\"u\":\"https://e.com/2\",\"i\":\"http://e.com/2.jpg\"},"
+                + "{\"c\":\"opensource\",\"t\":\"3\",\"u\":\"https://e.com/3\"},"
+                + "{\"c\":\"security\",\"t\":\"4\",\"u\":\"https://e.com/4\"}]";
+
+        List<TodayItem> items = TodayFeedParser.parse(json, NOW);
+
+        assertEquals(TodayItem.CATEGORY_TECH, items.get(0).getCategory());
+        assertEquals("https://e.com/1.jpg", items.get(0).getImageUrl());
+        assertEquals(TodayItem.CATEGORY_TECH, items.get(1).getCategory());
+        assertEquals("", items.get(1).getImageUrl());
+        assertEquals(TodayItem.CATEGORY_TECH, items.get(2).getCategory());
+        assertEquals(TodayItem.CATEGORY_NEWS, items.get(3).getCategory());
+    }
+
+    @Test
+    public void upgradeFromVersion1KeepsItemsAndMergesCategories() {
+        database.close();
+        context.deleteDatabase(databaseName);
+        try (SQLiteDatabase old = context.openOrCreateDatabase(databaseName, Context.MODE_PRIVATE, null)) {
+            old.execSQL("CREATE TABLE today_item (id INTEGER PRIMARY KEY AUTOINCREMENT, url TEXT NOT NULL UNIQUE, "
+                    + "category TEXT NOT NULL, source TEXT, title TEXT NOT NULL, summary TEXT, "
+                    + "published_at INTEGER NOT NULL DEFAULT 0, received_at INTEGER NOT NULL, is_read INTEGER NOT NULL DEFAULT 0)");
+            old.execSQL("INSERT INTO today_item (url, category, title, received_at, is_read) VALUES "
+                    + "('https://a', 'research', 'A', 1, 1), ('https://b', 'security', 'B', 1, 0), ('https://c', 'ai', 'C', 1, 0)");
+            old.setVersion(1);
+        }
+
+        database = new TodayFeedDatabase(context, databaseName);
+
+        List<TodayItem> tech = database.getItems(TodayItem.CATEGORY_TECH);
+        assertEquals(1, tech.size());
+        assertTrue("읽음 표시가 유지된다", tech.get(0).isRead());
+        assertNull(tech.get(0).getImageUrl());
+        assertEquals(2, database.getItems(TodayItem.CATEGORY_NEWS).size());
+    }
+
+    @Test
+    public void resendingWithoutImageKeepsExistingThumbnail() {
+        database.save(Collections.singletonList(new TodayItem("https://a", "news", "s", "t", "d", "https://e.com/a.jpg", NOW)), NOW);
+        database.save(Collections.singletonList(new TodayItem("https://a", "news", "s", "t", "d", "", NOW)), NOW);
+        assertEquals("https://e.com/a.jpg", database.getItems(null).get(0).getImageUrl());
     }
 
     @Test
@@ -117,7 +165,7 @@ public class TodayFeedDatabaseTest {
         TodayItem saved = database.getItems(null).get(0);
         database.markRead(saved.getId());
 
-        TodayItem changed = new TodayItem("https://a", "ai", "출처", "바뀐 제목", "바뀐 요약", NOW - 1000);
+        TodayItem changed = new TodayItem("https://a", "ai", "출처", "바뀐 제목", "바뀐 요약", "", NOW - 1000);
         assertEquals("새 항목이 아니다", 0, database.save(Collections.singletonList(changed), NOW + 5000));
 
         List<TodayItem> items = database.getItems(null);

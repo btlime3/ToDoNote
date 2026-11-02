@@ -2,11 +2,10 @@ package kr.akotis.todonote.model;
 
 /** 오늘 화면에 표시하는 소식 하나. 서버가 FCM으로 보낸다. */
 public class TodayItem {
-    public static final String CATEGORY_OPENSOURCE = "opensource";
-    public static final String CATEGORY_RESEARCH = "research";
-    public static final String CATEGORY_AI = "ai";
-    public static final String CATEGORY_SECURITY = "security";
+    /** 오늘 소식 탭: IT, AI, 보안 뉴스 */
     public static final String CATEGORY_NEWS = "news";
+    /** 새로운 기술 탭: 연구소 발표, 논문, 새 모델과 오픈소스 */
+    public static final String CATEGORY_TECH = "tech";
 
     private long id;
     private final String url;
@@ -14,33 +13,26 @@ public class TodayItem {
     private final String source;
     private final String title;
     private final String summary;
+    private final String imageUrl;
     private final long publishedAt;
     private long receivedAt;
     private boolean read;
 
-    public TodayItem(String url, String category, String source, String title, String summary, long publishedAt) {
+    public TodayItem(String url, String category, String source, String title, String summary,
+                     String imageUrl, long publishedAt) {
         this.url = url;
         this.category = category;
         this.source = source;
         this.title = title;
         this.summary = summary;
+        this.imageUrl = imageUrl;
         this.publishedAt = publishedAt;
     }
 
-    /** 화면에 쓰는 분류 이름. 앱이 모르는 분류를 서버가 보내면 받은 값을 그대로 보여 준다. */
-    public static String categoryLabel(String category) {
-        if (CATEGORY_OPENSOURCE.equals(category)) {
-            return "오픈소스";
-        } else if (CATEGORY_RESEARCH.equals(category)) {
-            return "연구";
-        } else if (CATEGORY_AI.equals(category)) {
-            return "AI";
-        } else if (CATEGORY_SECURITY.equals(category)) {
-            return "보안";
-        } else if (CATEGORY_NEWS.equals(category)) {
-            return "IT 뉴스";
-        }
-        return category;
+    /** 두 탭 중 하나로 정한다. 1.11의 수집기가 보내는 다섯 분류도 받을 수 있다. */
+    public static String normalizeCategory(String category) {
+        boolean tech = CATEGORY_TECH.equals(category) || "research".equals(category) || "opensource".equals(category);
+        return tech ? CATEGORY_TECH : CATEGORY_NEWS;
     }
 
     public long getId() {
@@ -69,6 +61,11 @@ public class TodayItem {
 
     public String getSummary() {
         return summary;
+    }
+
+    /** @return 썸네일 주소. 없으면 null 또는 빈 문자열 */
+    public String getImageUrl() {
+        return imageUrl;
     }
 
     public long getPublishedAt() {

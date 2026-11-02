@@ -21,7 +21,7 @@ public class TodayFeedDatabase extends SQLiteOpenHelper {
     public static final long RETENTION_MILLIS = TimeUnit.DAYS.toMillis(14);
 
     private static final String DATABASE_NAME = "TodayFeed.db";
-    private static final int DATABASE_VERSION = 1;
+    private static final int DATABASE_VERSION = 2;
 
     private static final String TABLE = "today_item";
     private static final String COL_ID = "id";
@@ -30,6 +30,7 @@ public class TodayFeedDatabase extends SQLiteOpenHelper {
     private static final String COL_SOURCE = "source";
     private static final String COL_TITLE = "title";
     private static final String COL_SUMMARY = "summary";
+    private static final String COL_IMAGE_URL = "image_url";
     private static final String COL_PUBLISHED_AT = "published_at";
     private static final String COL_RECEIVED_AT = "received_at";
     private static final String COL_READ = "is_read";
@@ -62,6 +63,7 @@ public class TodayFeedDatabase extends SQLiteOpenHelper {
                 COL_SOURCE + " TEXT, " +
                 COL_TITLE + " TEXT NOT NULL, " +
                 COL_SUMMARY + " TEXT, " +
+                COL_IMAGE_URL + " TEXT, " +
                 COL_PUBLISHED_AT + " INTEGER NOT NULL DEFAULT 0, " +
                 COL_RECEIVED_AT + " INTEGER NOT NULL, " +
                 COL_READ + " INTEGER NOT NULL DEFAULT 0)");
@@ -69,7 +71,14 @@ public class TodayFeedDatabase extends SQLiteOpenHelper {
 
     @Override
     public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
-        // 아직 버전 1뿐이다.
+        if (oldVersion < 2) {
+            db.execSQL("ALTER TABLE " + TABLE + " ADD COLUMN " + COL_IMAGE_URL + " TEXT");
+            // 다섯 분류를 두 탭으로 합친다.
+            db.execSQL("UPDATE " + TABLE + " SET " + COL_CATEGORY + " = '" + TodayItem.CATEGORY_TECH + "'" +
+                    " WHERE " + COL_CATEGORY + " IN ('research', 'opensource')");
+            db.execSQL("UPDATE " + TABLE + " SET " + COL_CATEGORY + " = '" + TodayItem.CATEGORY_NEWS + "'" +
+                    " WHERE " + COL_CATEGORY + " <> '" + TodayItem.CATEGORY_TECH + "'");
+        }
     }
 
     /**
@@ -89,6 +98,10 @@ public class TodayFeedDatabase extends SQLiteOpenHelper {
                 values.put(COL_TITLE, item.getTitle());
                 values.put(COL_SUMMARY, item.getSummary());
                 values.put(COL_PUBLISHED_AT, item.getPublishedAt());
+                // 다시 받을 때 이미지를 찾지 못했어도 이미 있는 썸네일은 지우지 않는다.
+                if (item.getImageUrl() != null && !item.getImageUrl().isEmpty()) {
+                    values.put(COL_IMAGE_URL, item.getImageUrl());
+                }
                 int updated = db.update(TABLE, values, COL_URL + " = ?", new String[]{item.getUrl()});
                 if (updated == 0) {
                     values.put(COL_URL, item.getUrl());
@@ -127,6 +140,7 @@ public class TodayFeedDatabase extends SQLiteOpenHelper {
                         cursor.getString(cursor.getColumnIndexOrThrow(COL_SOURCE)),
                         cursor.getString(cursor.getColumnIndexOrThrow(COL_TITLE)),
                         cursor.getString(cursor.getColumnIndexOrThrow(COL_SUMMARY)),
+                        cursor.getString(cursor.getColumnIndexOrThrow(COL_IMAGE_URL)),
                         cursor.getLong(cursor.getColumnIndexOrThrow(COL_PUBLISHED_AT)));
                 item.setId(cursor.getLong(cursor.getColumnIndexOrThrow(COL_ID)));
                 item.setReceivedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_RECEIVED_AT)));
