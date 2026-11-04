@@ -37,6 +37,8 @@ todonote*.json
 # 수집기 폴더에는 코드와 소스 목록만 올린다. 키나 토큰, 실행 기록이 들어가도 올라가지 않게 한다.
 server/today_feed/*
 !server/today_feed/*.py
+!server/today_feed/*.sh
+!server/today_feed/*.example
 !server/today_feed/sources.json
 
 # AI 도구 로컬 설정
