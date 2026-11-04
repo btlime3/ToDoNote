@@ -23,14 +23,76 @@
 
 ## 오늘 화면 수집기
 
-`server/today_feed/`는 무료 소스에서 소식을 모아 FCM으로 보내는 Python 스크립트입니다. API 키 없이 동작하고, 무료 Gemini API 키를 넣으면 한국어 번역과 AI 요약을 더합니다. 주기 실행은 직접 운영하는 서버의 cron에 맡깁니다.
+`server/today_feed/`는 무료 소스에서 소식을 모아 FCM으로 보내는 Python 스크립트입니다. API 키 없이 동작하고, 서버의 cron으로 실행합니다. **앱을 1.14 이상으로 먼저 업데이트한 뒤에 전송하세요.**
 
-```bash
-cd server/today_feed
-python3 collect.py --dry-run
-```
+| 파일 | 내용 |
+|---|---|
+| `run.sh` | cron이 실행하는 파일. 겹침 방지, 15분 제한, 로그 기록 |
+| `collect.py`, `feedlib.py`, `enrich.py` | 수집, 공통 기능, AI 처리 |
+| `sources.json` | 소스 목록, 관심사, 개수 제한 |
+| `today_feed.env.example` | 환경 변수 예시 |
 
-`--dry-run`은 표준 라이브러리만 쓰고 아무것도 보내지 않습니다. 전송(`--send`)에는 `firebase-admin` 패키지, FCM 토큰, 서비스 계정 키가 필요합니다. **앱을 1.13 이상으로 먼저 업데이트한 뒤에 전송하세요.** 서버 설정, crontab, 소스 목록은 [수집기 문서](agent-docs/오늘화면수집기-v3.md)에 있습니다.
+### 서버 설정
+
+1. 저장소를 `~/ToDoNote`에 받고, 전송에 쓰는 패키지를 설치합니다. Python 3.9 이상이 필요합니다.
+
+   ```bash
+   pip3 install firebase-admin
+   ```
+
+2. 환경 변수 파일을 만들고 `TODAY_FCM_TOKEN`과 `GOOGLE_APPLICATION_CREDENTIALS`를 채웁니다. 이 파일과 서비스 계정 키는 저장소 밖에 둡니다.
+
+   ```bash
+   mkdir -p ~/.config && cp ~/ToDoNote/server/today_feed/today_feed.env.example ~/.config/today_feed.env && chmod 600 ~/.config/today_feed.env
+   ```
+
+3. 보내지 않고 결과를 확인합니다. `실패` 줄이 있는지 봅니다.
+
+   ```bash
+   ~/ToDoNote/server/today_feed/run.sh --dry-run
+   ```
+
+   ```bash
+   tail -60 ~/today_feed.log
+   ```
+
+4. 한 번 보내고 휴대폰에서 확인합니다.
+
+   ```bash
+   ~/ToDoNote/server/today_feed/run.sh
+   ```
+
+5. `crontab -e`에 등록합니다. 서버 시간대는 `date`로 확인합니다. 아래는 한국 시각 07:05, 12:05, 18:05, 22:05에 실행합니다.
+
+   서버가 KST일 때:
+
+   ```cron
+   5 7,12,18,22 * * * $HOME/ToDoNote/server/today_feed/run.sh
+   ```
+
+   서버가 UTC일 때:
+
+   ```cron
+   5 22,3,9,13 * * * $HOME/ToDoNote/server/today_feed/run.sh
+   ```
+
+실행은 하루 4회 이하로 둡니다. FCM은 꺼진 기기의 메시지를 100개까지만 보관하고, 넘으면 일반 알림까지 모두 버립니다.
+
+### 뉴스 양과 관심사
+
+`sources.json`의 `interests`, `interest_keywords`, `news_block_keywords`로 관심사를 바꿉니다. 실행당 개수는 `max_items_per_category`로 정합니다. 기본값은 탭마다 8건입니다.
+
+### 한국어 번역과 AI 요약 (선택)
+
+환경 변수 파일의 세 값을 채우면 다음 실행부터 제목 번역, 1~2문장 요약, 관심도 판단을 합니다. OpenAI 호환 API이면 어디든 쓸 수 있습니다. 키가 비어 있거나 호출이 실패하면 원문을 보냅니다.
+
+| 변수 | 내용 |
+|---|---|
+| `TODAY_AI_API_KEY` | API 키. 비어 있으면 AI를 쓰지 않음 |
+| `TODAY_AI_MODEL` | 모델 이름. 비우면 `gemini-3.5-flash-lite` |
+| `TODAY_AI_BASE_URL` | API 주소. `.../v1`과 `.../v1/chat/completions` 모두 됨. 비우면 Gemini API |
+
+Gemini API 무료 등급은 입력을 Google 제품 개선에 사용합니다. 공개 글의 제목과 앞부분, 관심사 문장을 보내며, 메모와 노트는 보내지 않습니다.
 
 ## 기술 구성
 
@@ -85,7 +147,6 @@ app/src/main/java/kr/akotis/todonote/
 ├── widget/     홈 화면 위젯
 └── worker/     할 일 알림 예약
 server/today_feed/  오늘 화면 수집기
-agent-docs/     기능 검토와 운영 문서
 ```
 
 ## 보안 참고
@@ -95,4 +156,4 @@ agent-docs/     기능 검토와 운영 문서
 
 ## 저장소에 포함하지 않는 파일
 
-`google-services.json`, 서명 키(`*.jks`, `*.keystore`), `local.properties`, 빌드 결과물(`*.apk`, `*.aab`), DB와 백업 파일(`*.db`), IDE 설정(`.idea/`)은 `.gitignore`로 제외합니다. `server/today_feed/`에서는 `*.py`, `*.sh`, `*.example`, `sources.json`만 저장소에 올라가며, 서비스 계정 키와 토큰은 그 밖의 위치에 두는 것을 권장합니다.
+`google-services.json`, 서명 키(`*.jks`, `*.keystore`), `local.properties`, 빌드 결과물(`*.apk`, `*.aab`), DB와 백업 파일(`*.db`), IDE 설정(`.idea/`), 작업 문서(`agent-docs/`)는 `.gitignore`로 제외합니다. `server/today_feed/`에서는 `*.py`, `*.sh`, `*.example`, `sources.json`만 저장소에 올라가며, 서비스 계정 키와 토큰은 그 밖의 위치에 두는 것을 권장합니다.

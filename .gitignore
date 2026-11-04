@@ -41,5 +41,8 @@ server/today_feed/*
 !server/today_feed/*.example
 !server/today_feed/sources.json
 
+# 작업 문서는 로컬에만 둔다.
+/agent-docs/
+
 # AI 도구 로컬 설정
 /.claude/
