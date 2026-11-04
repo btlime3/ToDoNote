@@ -17,11 +17,12 @@ import kr.akotis.todonote.model.TodayItem;
  * 내보내기와 가져오기에 영향을 주지 않는다.
  */
 public class TodayFeedDatabase extends SQLiteOpenHelper {
-    public static final int MAX_ITEMS_PER_CATEGORY = 200;
+    /** 두 탭을 합쳐 100개까지 둔다. 나중에 볼 글은 보관함에 저장하면 여기서 지워져도 남는다. */
+    public static final int MAX_ITEMS_PER_CATEGORY = 50;
     public static final long RETENTION_MILLIS = TimeUnit.DAYS.toMillis(14);
 
     private static final String DATABASE_NAME = "TodayFeed.db";
-    private static final int DATABASE_VERSION = 2;
+    private static final int DATABASE_VERSION = 3;
 
     private static final String TABLE = "today_item";
     private static final String COL_ID = "id";
@@ -34,6 +35,7 @@ public class TodayFeedDatabase extends SQLiteOpenHelper {
     private static final String COL_PUBLISHED_AT = "published_at";
     private static final String COL_RECEIVED_AT = "received_at";
     private static final String COL_READ = "is_read";
+    private static final String COL_AI_SUMMARY = "ai_summary";
 
     /** 발행 시각을 모르는 항목은 받은 시각으로 정렬한다. */
     private static final String NEWEST_FIRST =
@@ -66,7 +68,8 @@ public class TodayFeedDatabase extends SQLiteOpenHelper {
                 COL_IMAGE_URL + " TEXT, " +
                 COL_PUBLISHED_AT + " INTEGER NOT NULL DEFAULT 0, " +
                 COL_RECEIVED_AT + " INTEGER NOT NULL, " +
-                COL_READ + " INTEGER NOT NULL DEFAULT 0)");
+                COL_READ + " INTEGER NOT NULL DEFAULT 0, " +
+                COL_AI_SUMMARY + " INTEGER NOT NULL DEFAULT 0)");
     }
 
     @Override
@@ -78,6 +81,9 @@ public class TodayFeedDatabase extends SQLiteOpenHelper {
                     " WHERE " + COL_CATEGORY + " IN ('research', 'opensource')");
             db.execSQL("UPDATE " + TABLE + " SET " + COL_CATEGORY + " = '" + TodayItem.CATEGORY_NEWS + "'" +
                     " WHERE " + COL_CATEGORY + " <> '" + TodayItem.CATEGORY_TECH + "'");
+        }
+        if (oldVersion < 3) {
+            db.execSQL("ALTER TABLE " + TABLE + " ADD COLUMN " + COL_AI_SUMMARY + " INTEGER NOT NULL DEFAULT 0");
         }
     }
 
@@ -98,6 +104,7 @@ public class TodayFeedDatabase extends SQLiteOpenHelper {
                 values.put(COL_TITLE, item.getTitle());
                 values.put(COL_SUMMARY, item.getSummary());
                 values.put(COL_PUBLISHED_AT, item.getPublishedAt());
+                values.put(COL_AI_SUMMARY, item.isAiSummary() ? 1 : 0);
                 // 다시 받을 때 이미지를 찾지 못했어도 이미 있는 썸네일은 지우지 않는다.
                 if (item.getImageUrl() != null && !item.getImageUrl().isEmpty()) {
                     values.put(COL_IMAGE_URL, item.getImageUrl());
@@ -145,6 +152,7 @@ public class TodayFeedDatabase extends SQLiteOpenHelper {
                 item.setId(cursor.getLong(cursor.getColumnIndexOrThrow(COL_ID)));
                 item.setReceivedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_RECEIVED_AT)));
                 item.setRead(cursor.getInt(cursor.getColumnIndexOrThrow(COL_READ)) == 1);
+                item.setAiSummary(cursor.getInt(cursor.getColumnIndexOrThrow(COL_AI_SUMMARY)) == 1);
                 items.add(item);
             }
         }

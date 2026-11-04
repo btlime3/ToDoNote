@@ -107,7 +107,24 @@ public class TodayFeedDatabaseTest {
         assertEquals(1, tech.size());
         assertTrue("읽음 표시가 유지된다", tech.get(0).isRead());
         assertNull(tech.get(0).getImageUrl());
+        assertFalse(tech.get(0).isAiSummary());
         assertEquals(2, database.getItems(TodayItem.CATEGORY_NEWS).size());
+    }
+
+    @Test
+    public void aiSummaryFlagIsParsedAndStored() {
+        String json = "[{\"c\":\"news\",\"t\":\"제목\",\"d\":\"요약\",\"u\":\"https://e.com/1\",\"a\":1},"
+                + "{\"c\":\"news\",\"t\":\"제목 2\",\"u\":\"https://e.com/2\"}]";
+
+        database.save(TodayFeedParser.parse(json, NOW), NOW);
+
+        List<TodayItem> items = database.getItems(null);
+        assertEquals(1, items.stream().filter(TodayItem::isAiSummary).count());
+    }
+
+    @Test
+    public void eachTabKeepsAtMostFiftyItems() {
+        assertEquals(50, TodayFeedDatabase.MAX_ITEMS_PER_CATEGORY);
     }
 
     @Test

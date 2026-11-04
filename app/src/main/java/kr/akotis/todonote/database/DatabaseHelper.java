@@ -19,7 +19,9 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.security.spec.KeySpec;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -31,11 +33,12 @@ import kr.akotis.todonote.model.MemoItem;
 import kr.akotis.todonote.model.NoteItem;
 import kr.akotis.todonote.model.NoteVersion;
 import kr.akotis.todonote.model.ToDoItem;
+import kr.akotis.todonote.model.TodayItem;
 
 public class DatabaseHelper extends SQLiteOpenHelper {
 
     private static final String DATABASE_NAME = "ToDoNote.db";
-    private static final int DATABASE_VERSION = 14;
+    private static final int DATABASE_VERSION = 15;
     public static final int MAX_STORED_MESSAGES = 30;
     /** 노트 하나당 보관하는 이전 버전 개수. */
     public static final int MAX_NOTE_VERSIONS = 10;
@@ -128,6 +131,30 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             COL_HISTORY_TITLE + " TEXT, " +
             COL_HISTORY_CONTENT + " TEXT, " +
             COL_HISTORY_SAVED_AT + " INTEGER)";
+    // 보관함. 오늘 화면의 소식이 지워져도 남도록 내용을 복사해 둔다. 메인 DB이므로 내보내기에 포함된다.
+    private static final String TABLE_SAVED_ARTICLE = "saved_article";
+    private static final String COL_SAVED_ID = "id";
+    private static final String COL_SAVED_URL = "url";
+    private static final String COL_SAVED_CATEGORY = "category";
+    private static final String COL_SAVED_SOURCE = "source";
+    private static final String COL_SAVED_TITLE = "title";
+    private static final String COL_SAVED_SUMMARY = "summary";
+    private static final String COL_SAVED_IMAGE_URL = "image_url";
+    private static final String COL_SAVED_AI_SUMMARY = "ai_summary";
+    private static final String COL_SAVED_PUBLISHED_AT = "published_at";
+    private static final String COL_SAVED_AT = "saved_at";
+    private static final String CREATE_SAVED_ARTICLE_TABLE = "CREATE TABLE IF NOT EXISTS " + TABLE_SAVED_ARTICLE + " (" +
+            COL_SAVED_ID + " INTEGER PRIMARY KEY AUTOINCREMENT, " +
+            COL_SAVED_URL + " TEXT NOT NULL UNIQUE, " +
+            COL_SAVED_CATEGORY + " TEXT, " +
+            COL_SAVED_SOURCE + " TEXT, " +
+            COL_SAVED_TITLE + " TEXT NOT NULL, " +
+            COL_SAVED_SUMMARY + " TEXT, " +
+            COL_SAVED_IMAGE_URL + " TEXT, " +
+            COL_SAVED_AI_SUMMARY + " INTEGER NOT NULL DEFAULT 0, " +
+            COL_SAVED_PUBLISHED_AT + " INTEGER NOT NULL DEFAULT 0, " +
+            COL_SAVED_AT + " INTEGER NOT NULL)";
+
     private static final String CREATE_NOTE_HISTORY_INDEX = "CREATE INDEX IF NOT EXISTS idx_note_history_note_id ON " +
             TABLE_NOTE_HISTORY + " (" + COL_HISTORY_NOTE_ID + ")";
 
@@ -167,6 +194,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             helper.getNoteHistory(0);
             helper.getNoteDraft(DRAFT_NEW_ITEM);
             helper.getMemoDraft();
+            helper.getSavedArticles();
             return true;
         } catch (IOException | RuntimeException e) {
             android.util.Log.w("DatabaseHelper", "Imported file cannot be opened by this app", e);
@@ -376,6 +404,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 
         db.execSQL(CREATE_NOTE_HISTORY_TABLE);
         db.execSQL(CREATE_NOTE_HISTORY_INDEX);
+
+        db.execSQL(CREATE_SAVED_ARTICLE_TABLE);
     }
 
     @Override
@@ -485,6 +515,63 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             db.execSQL(CREATE_NOTE_HISTORY_TABLE);
             db.execSQL(CREATE_NOTE_HISTORY_INDEX);
         }
+        if (oldVersion < 15) {
+            // 나중에 볼 소식을 저장하는 보관함 테이블 추가
+            db.execSQL(CREATE_SAVED_ARTICLE_TABLE);
+        }
+    }
+
+    /** 이미 저장한 주소이면 그대로 둔다. */
+    public void saveArticle(TodayItem item, long savedAt) {
+        ContentValues values = new ContentValues();
+        values.put(COL_SAVED_URL, item.getUrl());
+        values.put(COL_SAVED_CATEGORY, item.getCategory());
+        values.put(COL_SAVED_SOURCE, item.getSource());
+        values.put(COL_SAVED_TITLE, item.getTitle());
+        values.put(COL_SAVED_SUMMARY, item.getSummary());
+        values.put(COL_SAVED_IMAGE_URL, item.getImageUrl());
+        values.put(COL_SAVED_AI_SUMMARY, item.isAiSummary() ? 1 : 0);
+        values.put(COL_SAVED_PUBLISHED_AT, item.getPublishedAt());
+        values.put(COL_SAVED_AT, savedAt);
+        getWritableDatabase().insertWithOnConflict(TABLE_SAVED_ARTICLE, null, values, SQLiteDatabase.CONFLICT_IGNORE);
+    }
+
+    public void removeSavedArticle(String url) {
+        getWritableDatabase().delete(TABLE_SAVED_ARTICLE, COL_SAVED_URL + " = ?", new String[]{url});
+    }
+
+    /** 최근에 저장한 순서로 돌려준다. 저장한 시각은 receivedAt에 담긴다. */
+    public List<TodayItem> getSavedArticles() {
+        List<TodayItem> items = new ArrayList<>();
+        try (Cursor cursor = getReadableDatabase().query(TABLE_SAVED_ARTICLE, null, null, null, null, null,
+                COL_SAVED_AT + " DESC, " + COL_SAVED_ID + " DESC")) {
+            while (cursor.moveToNext()) {
+                TodayItem item = new TodayItem(
+                        cursor.getString(cursor.getColumnIndexOrThrow(COL_SAVED_URL)),
+                        cursor.getString(cursor.getColumnIndexOrThrow(COL_SAVED_CATEGORY)),
+                        cursor.getString(cursor.getColumnIndexOrThrow(COL_SAVED_SOURCE)),
+                        cursor.getString(cursor.getColumnIndexOrThrow(COL_SAVED_TITLE)),
+                        cursor.getString(cursor.getColumnIndexOrThrow(COL_SAVED_SUMMARY)),
+                        cursor.getString(cursor.getColumnIndexOrThrow(COL_SAVED_IMAGE_URL)),
+                        cursor.getLong(cursor.getColumnIndexOrThrow(COL_SAVED_PUBLISHED_AT)));
+                item.setId(cursor.getLong(cursor.getColumnIndexOrThrow(COL_SAVED_ID)));
+                item.setReceivedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_SAVED_AT)));
+                item.setAiSummary(cursor.getInt(cursor.getColumnIndexOrThrow(COL_SAVED_AI_SUMMARY)) == 1);
+                items.add(item);
+            }
+        }
+        return items;
+    }
+
+    public Set<String> getSavedArticleUrls() {
+        Set<String> urls = new HashSet<>();
+        try (Cursor cursor = getReadableDatabase().query(TABLE_SAVED_ARTICLE, new String[]{COL_SAVED_URL},
+                null, null, null, null, null)) {
+            while (cursor.moveToNext()) {
+                urls.add(cursor.getString(0));
+            }
+        }
+        return urls;
     }
 
     @Override

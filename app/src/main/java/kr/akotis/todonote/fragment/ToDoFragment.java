@@ -68,6 +68,11 @@ public class ToDoFragment extends Fragment {
         recyclerTodo = view.findViewById(R.id.recycler_todo);
         tvTodoEmpty = view.findViewById(R.id.tv_todo_empty);
         fabTodo = view.findViewById(R.id.fab_todo);
+        view.findViewById(R.id.tv_todo_show_completed).setOnClickListener(v ->
+                getParentFragmentManager().beginTransaction()
+                        .replace(R.id.fragment_container, new CompletedToDoFragment())
+                        .addToBackStack(null)
+                        .commit());
 
         // RecyclerView 설정
         todoAdapter = new ToDoAdapter();

@@ -68,10 +68,10 @@ import java.util.Locale;
 import kr.akotis.todonote.R;
 import kr.akotis.todonote.database.DamagedDatabaseKeeper;
 import kr.akotis.todonote.database.DatabaseHelper;
-import kr.akotis.todonote.fragment.CompletedToDoFragment;
 import kr.akotis.todonote.fragment.MemoFragment;
 import kr.akotis.todonote.fragment.MessageFragment;
 import kr.akotis.todonote.fragment.NoteFragment;
+import kr.akotis.todonote.fragment.SavedFragment;
 import kr.akotis.todonote.service.MyFirebaseMessagingService;
 import kr.akotis.todonote.fragment.ToDoFragment;
 import kr.akotis.todonote.fragment.TodayFragment;
@@ -753,8 +753,8 @@ public class MainActivity extends AppCompatActivity {
     private void handleDrawerItemClick(int itemId) {
         if (itemId == R.id.nav_todo) {
             loadFragment(new ToDoFragment());
-        } else if (itemId == R.id.nav_completed_todo) {
-            loadFragment(new CompletedToDoFragment());
+        } else if (itemId == R.id.nav_saved) {
+            loadFragment(new SavedFragment());
         } else if (itemId == R.id.nav_export) {
             exportDatabase();
         } else if (itemId == R.id.nav_import) {
@@ -839,7 +839,7 @@ public class MainActivity extends AppCompatActivity {
                 boolean openedFromMenu = current instanceof TrashFragment
                         || current instanceof MessageFragment
                         || current instanceof ToDoFragment
-                        || current instanceof CompletedToDoFragment;
+                        || current instanceof SavedFragment;
                 if (openedFromMenu && fragmentManager.getBackStackEntryCount() == 0) {
                     bottomNav.setSelectedItemId(bottomNav.getSelectedItemId());
                     return;

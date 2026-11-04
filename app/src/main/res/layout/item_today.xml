@@ -44,6 +44,16 @@
                     android:textSize="12sp"
                     android:textStyle="bold" />
 
+                <ImageView
+                    android:id="@+id/iv_today_saved"
+                    android:layout_width="14dp"
+                    android:layout_height="14dp"
+                    android:layout_marginStart="8dp"
+                    android:contentDescription="보관함에 저장됨"
+                    android:src="@drawable/ic_bookmark"
+                    android:visibility="gone"
+                    app:tint="@color/color_primary_text" />
+
                 <TextView
                     android:id="@+id/tv_today_time"
                     android:layout_width="wrap_content"

@@ -38,7 +38,7 @@ public final class TodayThumbnailLoader {
     private static final int WEBP_QUALITY = 80;
     private static final int MAX_DOWNLOAD_BYTES = 6 * 1024 * 1024;
     private static final int MAX_ASPECT_RATIO = 6;
-    private static final int MAX_CACHE_FILES = 300;
+    private static final int MAX_CACHE_FILES = 150;
     private static final int TIMEOUT_MILLIS = 8000;
     private static final int MEMORY_CACHE_BYTES = 8 * 1024 * 1024;
 

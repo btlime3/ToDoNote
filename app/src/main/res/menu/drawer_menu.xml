@@ -8,9 +8,9 @@
             android:icon="@android:drawable/ic_menu_agenda"
             android:title="할 일" />
         <item
-            android:id="@+id/nav_completed_todo"
-            android:icon="@android:drawable/ic_menu_recent_history"
-            android:title="완료 작업" />
+            android:id="@+id/nav_saved"
+            android:icon="@drawable/ic_bookmark"
+            android:title="보관함" />
         <item
             android:id="@+id/nav_export"
             android:icon="@drawable/ic_export"

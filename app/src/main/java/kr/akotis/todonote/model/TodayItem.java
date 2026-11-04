@@ -17,6 +17,7 @@ public class TodayItem {
     private final long publishedAt;
     private long receivedAt;
     private boolean read;
+    private boolean aiSummary;
 
     public TodayItem(String url, String category, String source, String title, String summary,
                      String imageUrl, long publishedAt) {
@@ -86,6 +87,15 @@ public class TodayItem {
 
     public void setRead(boolean read) {
         this.read = read;
+    }
+
+    /** 요약을 AI가 만들었는지. 카드에 표시해서 원문과 구분한다. */
+    public boolean isAiSummary() {
+        return aiSummary;
+    }
+
+    public void setAiSummary(boolean aiSummary) {
+        this.aiSummary = aiSummary;
     }
 
     /** 발행 시각을 모르면 받은 시각을 쓴다. */
