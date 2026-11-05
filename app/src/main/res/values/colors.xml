@@ -29,8 +29,10 @@
     <color name="color_background">#FBF9F1</color>
     <color name="color_surface">#FFFFFF</color>
     <color name="color_today_new">#E9F6FC</color>
-    <!-- 카드 색이 비치도록 메인 컬러를 8%만 입힌다. -->
-    <color name="color_today_ai_box">#142E7D6B</color>
+    <!-- AI 요약 박스. 흰 카드와 하늘색 카드 어디서나 구분되도록 불투명한 연보라색을 쓴다. -->
+    <color name="color_today_ai_box">#F1EEFC</color>
+    <color name="color_today_ai_stroke">#DED8F6</color>
+    <color name="color_today_ai_text">#5B4FC4</color>
     
     <!-- 텍스트/라인 (Dark Text) - 진한 회색 -->
     <color name="color_text_dark">#444444</color>

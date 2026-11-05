@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- AI 요약 표시. 큰 다이아몬드 별과 작은 별을 앱의 민트색에서 파란색으로 이어지게 칠한다. -->
+<!-- AI 요약 표시. 큰 다이아몬드 별과 작은 별을 박스 색에 맞춰 파란색에서 보라색으로 이어지게 칠한다. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:aapt="http://schemas.android.com/aapt"
     android:width="24dp"
@@ -9,10 +9,10 @@
     <path android:pathData="M10.5,2 C11.1,7.6 13.4,9.9 19,10.5 C13.4,11.1 11.1,13.4 10.5,19 C9.9,13.4 7.6,11.1 2,10.5 C7.6,9.9 9.9,7.6 10.5,2 Z M19,14.5 C19.25,16.9 20.1,17.75 22.5,18 C20.1,18.25 19.25,19.1 19,21.5 C18.75,19.1 17.9,18.25 15.5,18 C17.9,17.75 18.75,16.9 19,14.5 Z">
         <aapt:attr name="android:fillColor">
             <gradient
-                android:endColor="#FF4F6BE8"
+                android:endColor="#FF8B5CF6"
                 android:endX="22.5"
                 android:endY="21.5"
-                android:startColor="#FF1FA88F"
+                android:startColor="#FF3F7BE8"
                 android:startX="2"
                 android:startY="2"
                 android:type="linear" />
