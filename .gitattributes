@@ -1,3 +1,0 @@
-# 서버에서 실행하는 파일은 Windows에서 복사해도 줄바꿈이 깨지지 않게 한다.
-server/today_feed/*.sh text eol=lf
-server/today_feed/*.example text eol=lf
