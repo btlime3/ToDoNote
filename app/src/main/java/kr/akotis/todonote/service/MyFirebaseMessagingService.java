@@ -8,6 +8,7 @@ import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.core.app.NotificationCompat;
+import androidx.core.content.ContextCompat;
 import androidx.core.text.HtmlCompat;
 
 import com.google.firebase.messaging.FirebaseMessagingService;
@@ -125,7 +126,9 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
 
         // 알림 생성
         NotificationCompat.Builder notificationBuilder = new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setSmallIcon(R.mipmap.ic_main) // 앱 아이콘 사용
+                // 상태 표시줄은 모양만 쓰므로 꽉 찬 앱 아이콘을 넣으면 흰 원으로 보인다.
+                .setSmallIcon(R.drawable.ic_stat_todonote)
+                .setColor(ContextCompat.getColor(this, R.color.color_primary_text))
                 .setContentTitle(title != null ? title : "새 알림")
                 .setContentText(bodyText)
                 .setAutoCancel(true)

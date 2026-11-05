@@ -7,6 +7,7 @@ import android.content.Context;
 import android.content.Intent;
 
 import androidx.core.app.NotificationCompat;
+import androidx.core.content.ContextCompat;
 import androidx.work.Worker;
 import androidx.work.WorkerParameters;
 
@@ -58,7 +59,9 @@ public class ToDoNotificationWorker extends Worker {
         // 알림 생성
         NotificationCompat.Builder builder = new NotificationCompat.Builder(
                 getApplicationContext(), CHANNEL_ID)
-                .setSmallIcon(R.mipmap.ic_main) // 앱 아이콘 사용
+                // 상태 표시줄은 모양만 쓰므로 꽉 찬 앱 아이콘을 넣으면 흰 원으로 보인다.
+                .setSmallIcon(R.drawable.ic_stat_todonote)
+                .setColor(ContextCompat.getColor(getApplicationContext(), R.color.color_primary_text))
                 .setContentTitle(todo.getTitle())
                 .setContentText(todo.getDetail() != null && !todo.getDetail().isEmpty() 
                         ? todo.getDetail() 
