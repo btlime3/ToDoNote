@@ -3,6 +3,10 @@ package kr.akotis.todonote.adapter;
 import android.annotation.SuppressLint;
 import android.graphics.Rect;
 import android.graphics.Typeface;
+import android.transition.ChangeBounds;
+import android.transition.Fade;
+import android.transition.TransitionManager;
+import android.transition.TransitionSet;
 import android.view.HapticFeedbackConstants;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
@@ -40,6 +44,7 @@ public class TodayFeedAdapter extends RecyclerView.Adapter<RecyclerView.ViewHold
     private static final int TYPE_ITEM = 1;
     /** 시스템 기본값(0.4초)은 목록을 넘기다 잘못 눌리기 쉬워서 더 오래 눌렀을 때만 보관한다. */
     private static final long SAVE_PRESS_MILLIS = 800;
+    private static final long AI_TOGGLE_MILLIS = 180;
     private static final long NEW_WINDOW_MILLIS = TimeUnit.DAYS.toMillis(1);
     private static final DateTimeFormatter DAY_FORMAT = DateTimeFormatter.ofPattern("M월 d일 EEEE", Locale.KOREAN);
 
@@ -193,7 +198,6 @@ public class TodayFeedAdapter extends RecyclerView.Adapter<RecyclerView.ViewHold
         private final ImageView ivThumbnail;
         private final ImageView ivSaved;
         private final View boxAi;
-        private final View aiToggle;
         private final ImageView ivAiArrow;
         private final TextView tvAi;
         private final MaterialCardView card;
@@ -209,7 +213,6 @@ public class TodayFeedAdapter extends RecyclerView.Adapter<RecyclerView.ViewHold
             ivThumbnail = itemView.findViewById(R.id.iv_today_thumbnail);
             ivSaved = itemView.findViewById(R.id.iv_today_saved);
             boxAi = itemView.findViewById(R.id.box_today_ai);
-            aiToggle = itemView.findViewById(R.id.today_ai_toggle);
             ivAiArrow = itemView.findViewById(R.id.iv_today_ai_arrow);
             tvAi = itemView.findViewById(R.id.tv_today_ai);
             card = (MaterialCardView) itemView;
@@ -219,15 +222,15 @@ public class TodayFeedAdapter extends RecyclerView.Adapter<RecyclerView.ViewHold
                     listener.onItemClick((TodayItem) rows.get(position), position);
                 }
             });
-            // 요약 칸을 눌러도 링크를 열거나 읽음으로 바꾸지 않고 칸만 여닫는다.
-            aiToggle.setOnClickListener(v -> {
+            // 박스를 눌러도 링크를 열거나 읽음으로 바꾸지 않고 박스만 여닫는다.
+            boxAi.setOnClickListener(v -> {
                 int position = getBindingAdapterPosition();
                 if (!ignoreClick && position != RecyclerView.NO_POSITION) {
                     toggleAi(((TodayItem) rows.get(position)).getUrl());
                 }
             });
             watchSavePress(itemView);
-            watchSavePress(aiToggle);
+            watchSavePress(boxAi);
         }
 
         private void toggleAi(String url) {
@@ -235,18 +238,30 @@ public class TodayFeedAdapter extends RecyclerView.Adapter<RecyclerView.ViewHold
             if (!expanded) {
                 expandedAi.remove(url);
             }
+            // 아래 카드까지 함께 움직이도록 목록 전체에 적용한다.
+            // 페이드는 요약 글에만 준다. 전체에 주면 화면 밖으로 밀려나는 카드가 잠깐 겹쳐 보인다.
+            if (itemView.getParent() instanceof ViewGroup) {
+                TransitionManager.beginDelayedTransition((ViewGroup) itemView.getParent(), new TransitionSet()
+                        .addTransition(new ChangeBounds())
+                        .addTransition(new Fade().addTarget(tvAi))
+                        .setDuration(AI_TOGGLE_MILLIS));
+            }
+            float arrowRotation = ivAiArrow.getRotation();
             showAi(expanded);
+            ivAiArrow.setRotation(arrowRotation);
+            ivAiArrow.animate().rotation(expanded ? 180 : 0).setDuration(AI_TOGGLE_MILLIS);
             if (expanded) {
-                // 화면 아래쪽 카드는 펼친 내용이 가려지므로 보이는 곳까지 올린다.
-                itemView.post(() -> itemView.requestRectangleOnScreen(
-                        new Rect(0, 0, itemView.getWidth(), itemView.getHeight())));
+                // 화면 아래쪽 카드는 펼친 내용이 가려지므로 보이는 곳까지 올린다. 움직이는 동안에는 목록이 스크롤되지 않는다.
+                itemView.postDelayed(() -> itemView.requestRectangleOnScreen(
+                        new Rect(0, 0, itemView.getWidth(), itemView.getHeight())), AI_TOGGLE_MILLIS + 40);
             }
         }
 
         private void showAi(boolean expanded) {
             tvAi.setVisibility(expanded ? View.VISIBLE : View.GONE);
+            ivAiArrow.animate().cancel();
             ivAiArrow.setRotation(expanded ? 180 : 0);
-            aiToggle.setContentDescription(expanded ? "AI 요약 닫기" : "AI 요약 열기");
+            boxAi.setContentDescription(expanded ? "AI 요약 닫기" : "AI 요약 열기");
         }
 
         /** 눌림 효과와 짧은 클릭은 뷰가 그대로 처리하도록 터치를 소비하지 않는다. */

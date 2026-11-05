@@ -29,7 +29,8 @@
     <color name="color_background">#FBF9F1</color>
     <color name="color_surface">#FFFFFF</color>
     <color name="color_today_new">#E9F6FC</color>
-    <color name="color_today_ai_box">#F4FAF8</color>
+    <!-- 카드 색이 비치도록 메인 컬러를 8%만 입힌다. -->
+    <color name="color_today_ai_box">#142E7D6B</color>
     
     <!-- 텍스트/라인 (Dark Text) - 진한 회색 -->
     <color name="color_text_dark">#444444</color>
