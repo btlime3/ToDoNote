@@ -751,9 +751,7 @@ public class MainActivity extends AppCompatActivity {
 
     // 상단 NavBar 목록 메뉴들
     private void handleDrawerItemClick(int itemId) {
-        if (itemId == R.id.nav_todo) {
-            loadFragment(new ToDoFragment());
-        } else if (itemId == R.id.nav_saved) {
+        if (itemId == R.id.nav_saved) {
             loadFragment(new SavedFragment());
         } else if (itemId == R.id.nav_export) {
             exportDatabase();

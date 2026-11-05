@@ -17,13 +17,13 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="12dp">
+        android:orientation="vertical">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal">
+            android:orientation="horizontal"
+            android:padding="12dp">
 
             <LinearLayout
                 android:layout_width="0dp"
@@ -101,36 +101,62 @@
                 android:visibility="gone" />
         </LinearLayout>
 
-        <!-- 카드 전체 폭을 쓰고 줄 수를 제한하지 않아 AI 요약을 끝까지 읽을 수 있다. -->
+        <!-- 카드 아래에 이어진 칸. 메모 검색처럼 화살표 줄을 눌러 여닫고, 펼치면 요약을 끝까지 보여 준다. -->
         <LinearLayout
             android:id="@+id/box_today_ai"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:background="@drawable/bg_today_ai"
+            android:background="@color/color_today_ai_box"
             android:orientation="vertical"
-            android:paddingStart="10dp"
-            android:paddingTop="8dp"
-            android:paddingEnd="10dp"
-            android:paddingBottom="8dp"
             android:visibility="gone">
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="AI 요약"
-                android:textColor="@color/color_primary_text"
-                android:textSize="11sp"
-                android:textStyle="bold" />
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="@color/color_primary_light" />
+
+            <LinearLayout
+                android:id="@+id/today_ai_toggle"
+                android:layout_width="match_parent"
+                android:layout_height="36dp"
+                android:background="?attr/selectableItemBackground"
+                android:clickable="true"
+                android:contentDescription="AI 요약 열기"
+                android:focusable="true"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="AI 요약"
+                    android:textColor="@color/color_primary_text"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <ImageView
+                    android:id="@+id/iv_today_ai_arrow"
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
+                    android:contentDescription="@null"
+                    android:src="@drawable/ic_expand_more"
+                    app:tint="@color/color_primary_text" />
+            </LinearLayout>
 
             <TextView
                 android:id="@+id/tv_today_ai"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
                 android:lineSpacingExtra="2dp"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:paddingBottom="10dp"
                 android:textColor="@color/color_text_dark"
-                android:textSize="13sp" />
+                android:textSize="13sp"
+                android:visibility="gone" />
         </LinearLayout>
     </LinearLayout>
 

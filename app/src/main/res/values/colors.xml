@@ -28,7 +28,7 @@
     <!-- 배경 컬러 (Background) - 옅은 크림색 -->
     <color name="color_background">#FBF9F1</color>
     <color name="color_surface">#FFFFFF</color>
-    <color name="color_today_new">#DDF1FB</color>
+    <color name="color_today_new">#E9F6FC</color>
     <color name="color_today_ai_box">#F4FAF8</color>
     
     <!-- 텍스트/라인 (Dark Text) - 진한 회색 -->

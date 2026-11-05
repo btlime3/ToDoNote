@@ -1,6 +1,7 @@
 package kr.akotis.todonote.adapter;
 
 import android.annotation.SuppressLint;
+import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.view.HapticFeedbackConstants;
 import android.view.LayoutInflater;
@@ -23,6 +24,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -62,6 +64,8 @@ public class TodayFeedAdapter extends RecyclerView.Adapter<RecyclerView.ViewHold
     private final OnItemClickListener listener;
     private final OnItemLongClickListener longClickListener;
     private final List<Object> rows = new ArrayList<>();
+    /** AI 요약을 펼친 글의 주소. 새 소식이 도착해 목록을 다시 그려도 펼친 상태를 유지한다. */
+    private final Set<String> expandedAi = new HashSet<>();
     private Set<String> savedUrls = Collections.emptySet();
     private boolean highlightNew = true;
 
@@ -189,6 +193,8 @@ public class TodayFeedAdapter extends RecyclerView.Adapter<RecyclerView.ViewHold
         private final ImageView ivThumbnail;
         private final ImageView ivSaved;
         private final View boxAi;
+        private final View aiToggle;
+        private final ImageView ivAiArrow;
         private final TextView tvAi;
         private final MaterialCardView card;
         private final Runnable savePress = this::onSavePress;
@@ -203,6 +209,8 @@ public class TodayFeedAdapter extends RecyclerView.Adapter<RecyclerView.ViewHold
             ivThumbnail = itemView.findViewById(R.id.iv_today_thumbnail);
             ivSaved = itemView.findViewById(R.id.iv_today_saved);
             boxAi = itemView.findViewById(R.id.box_today_ai);
+            aiToggle = itemView.findViewById(R.id.today_ai_toggle);
+            ivAiArrow = itemView.findViewById(R.id.iv_today_ai_arrow);
             tvAi = itemView.findViewById(R.id.tv_today_ai);
             card = (MaterialCardView) itemView;
             itemView.setOnClickListener(v -> {
@@ -211,15 +219,42 @@ public class TodayFeedAdapter extends RecyclerView.Adapter<RecyclerView.ViewHold
                     listener.onItemClick((TodayItem) rows.get(position), position);
                 }
             });
-            watchSavePress();
+            // 요약 칸을 눌러도 링크를 열거나 읽음으로 바꾸지 않고 칸만 여닫는다.
+            aiToggle.setOnClickListener(v -> {
+                int position = getBindingAdapterPosition();
+                if (!ignoreClick && position != RecyclerView.NO_POSITION) {
+                    toggleAi(((TodayItem) rows.get(position)).getUrl());
+                }
+            });
+            watchSavePress(itemView);
+            watchSavePress(aiToggle);
         }
 
-        /** 눌림 효과와 짧은 클릭은 카드가 그대로 처리하도록 터치를 소비하지 않는다. */
+        private void toggleAi(String url) {
+            boolean expanded = expandedAi.add(url);
+            if (!expanded) {
+                expandedAi.remove(url);
+            }
+            showAi(expanded);
+            if (expanded) {
+                // 화면 아래쪽 카드는 펼친 내용이 가려지므로 보이는 곳까지 올린다.
+                itemView.post(() -> itemView.requestRectangleOnScreen(
+                        new Rect(0, 0, itemView.getWidth(), itemView.getHeight())));
+            }
+        }
+
+        private void showAi(boolean expanded) {
+            tvAi.setVisibility(expanded ? View.VISIBLE : View.GONE);
+            ivAiArrow.setRotation(expanded ? 180 : 0);
+            aiToggle.setContentDescription(expanded ? "AI 요약 닫기" : "AI 요약 열기");
+        }
+
+        /** 눌림 효과와 짧은 클릭은 뷰가 그대로 처리하도록 터치를 소비하지 않는다. */
         @SuppressLint("ClickableViewAccessibility")
-        private void watchSavePress() {
-            int touchSlop = ViewConfiguration.get(itemView.getContext()).getScaledTouchSlop();
+        private void watchSavePress(View target) {
+            int touchSlop = ViewConfiguration.get(target.getContext()).getScaledTouchSlop();
             float[] down = new float[2];
-            itemView.setOnTouchListener((v, event) -> {
+            target.setOnTouchListener((v, event) -> {
                 switch (event.getActionMasked()) {
                     case MotionEvent.ACTION_DOWN:
                         ignoreClick = false;
@@ -268,6 +303,7 @@ public class TodayFeedAdapter extends RecyclerView.Adapter<RecyclerView.ViewHold
             String aiText = item.getDisplayAiText();
             boxAi.setVisibility(aiText.isEmpty() ? View.GONE : View.VISIBLE);
             tvAi.setText(aiText);
+            showAi(expandedAi.contains(item.getUrl()));
             TodayThumbnailLoader.load(ivThumbnail, item.getImageUrl());
             ivSaved.setVisibility(highlightNew && savedUrls.contains(item.getUrl()) ? View.VISIBLE : View.GONE);
             // 새 소식은 배경으로 눈에 띄게 한다. 읽은 글은 제목 굵기만 줄여 흐려지지 않게 구분한다.
