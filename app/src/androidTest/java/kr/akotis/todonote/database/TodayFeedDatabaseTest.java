@@ -123,6 +123,70 @@ public class TodayFeedDatabaseTest {
     }
 
     @Test
+    public void aiTextIsStoredApartFromSummaryAndShownOnlyForTech() {
+        String json = "[{\"c\":\"tech\",\"t\":\"기술\",\"d\":\"원문\",\"u\":\"https://e.com/t\",\"ai\":\"AI 요약\"},"
+                + "{\"c\":\"news\",\"t\":\"뉴스\",\"d\":\"원문\",\"u\":\"https://e.com/n\",\"ai\":\"AI 요약\"}]";
+
+        database.save(TodayFeedParser.parse(json, NOW), NOW);
+
+        TodayItem tech = database.getItems(TodayItem.CATEGORY_TECH).get(0);
+        assertEquals("원문", tech.getDisplaySummary());
+        assertEquals("AI 요약", tech.getDisplayAiText());
+        TodayItem news = database.getItems(TodayItem.CATEGORY_NEWS).get(0);
+        assertEquals("원문", news.getDisplaySummary());
+        assertEquals("", news.getDisplayAiText());
+    }
+
+    /** 1.15까지의 수집기가 보낸 글은 요약 칸에 AI 요약이 있다. */
+    @Test
+    public void oldAiSummaryMovesToTheBoxOnlyForTech() {
+        String json = "[{\"c\":\"tech\",\"t\":\"기술\",\"d\":\"옛 AI 요약\",\"u\":\"https://e.com/t\",\"a\":1},"
+                + "{\"c\":\"news\",\"t\":\"뉴스\",\"d\":\"옛 AI 요약\",\"u\":\"https://e.com/n\",\"a\":1}]";
+
+        database.save(TodayFeedParser.parse(json, NOW), NOW);
+
+        TodayItem tech = database.getItems(TodayItem.CATEGORY_TECH).get(0);
+        assertEquals("", tech.getDisplaySummary());
+        assertEquals("옛 AI 요약", tech.getDisplayAiText());
+        TodayItem news = database.getItems(TodayItem.CATEGORY_NEWS).get(0);
+        assertEquals("옛 AI 요약", news.getDisplaySummary());
+        assertEquals("", news.getDisplayAiText());
+    }
+
+    @Test
+    public void resendingWithoutAiTextKeepsExistingAiText() {
+        String withAi = "[{\"c\":\"tech\",\"t\":\"기술\",\"d\":\"원문\",\"u\":\"https://e.com/t\",\"ai\":\"AI 요약\"}]";
+        String withoutAi = "[{\"c\":\"tech\",\"t\":\"기술\",\"d\":\"원문\",\"u\":\"https://e.com/t\"}]";
+
+        database.save(TodayFeedParser.parse(withAi, NOW), NOW);
+        database.save(TodayFeedParser.parse(withoutAi, NOW), NOW);
+
+        assertEquals("AI 요약", database.getItems(TodayItem.CATEGORY_TECH).get(0).getDisplayAiText());
+    }
+
+    /** 읽음 표시와 소식이 그대로 남은 채로 새 컬럼만 추가되어야 한다. */
+    @Test
+    public void upgradeFromVersion3KeepsItems() {
+        database.close();
+        context.deleteDatabase(databaseName);
+        try (SQLiteDatabase old = context.openOrCreateDatabase(databaseName, Context.MODE_PRIVATE, null)) {
+            old.execSQL("CREATE TABLE today_item (id INTEGER PRIMARY KEY AUTOINCREMENT, url TEXT NOT NULL UNIQUE, "
+                    + "category TEXT NOT NULL, source TEXT, title TEXT NOT NULL, summary TEXT, image_url TEXT, "
+                    + "published_at INTEGER NOT NULL DEFAULT 0, received_at INTEGER NOT NULL, "
+                    + "is_read INTEGER NOT NULL DEFAULT 0, ai_summary INTEGER NOT NULL DEFAULT 0)");
+            old.execSQL("INSERT INTO today_item (url, category, title, summary, received_at, is_read, ai_summary) VALUES "
+                    + "('https://a', 'tech', 'A', '옛 AI 요약', 1, 1, 1)");
+            old.setVersion(3);
+        }
+
+        database = new TodayFeedDatabase(context, databaseName);
+
+        TodayItem item = database.getItems(TodayItem.CATEGORY_TECH).get(0);
+        assertTrue(item.isRead());
+        assertEquals("옛 AI 요약", item.getDisplayAiText());
+    }
+
+    @Test
     public void eachTabKeepsAtMostFiftyItems() {
         assertEquals(50, TodayFeedDatabase.MAX_ITEMS_PER_CATEGORY);
     }

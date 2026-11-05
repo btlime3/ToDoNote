@@ -17,12 +17,13 @@ import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
-import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+import androidx.viewpager2.widget.ViewPager2;
 
 import com.google.android.material.snackbar.Snackbar;
 import com.google.android.material.tabs.TabLayout;
+import com.google.android.material.tabs.TabLayoutMediator;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -32,30 +33,27 @@ import java.util.Set;
 
 import kr.akotis.todonote.R;
 import kr.akotis.todonote.adapter.TodayFeedAdapter;
-import kr.akotis.todonote.adapter.TodaySwipeCallback;
 import kr.akotis.todonote.database.DatabaseHelper;
 import kr.akotis.todonote.database.TodayFeedDatabase;
 import kr.akotis.todonote.model.TodayItem;
 import kr.akotis.todonote.service.MyFirebaseMessagingService;
 
-/** 서버가 보낸 소식을 오늘 소식과 새로운 기술 두 탭으로 나누어 보여 준다. */
+/** 서버가 보낸 소식을 오늘 소식과 새로운 기술 두 탭으로 나누어 보여 준다. 좌우로 밀어 탭을 옮긴다. */
 public class TodayFragment extends Fragment {
     private static final String PREFS = "today_screen";
     private static final String KEY_TAB = "tab";
     private static final int TAB_NEWS = 0;
     private static final int TAB_TECH = 1;
+    private static final String[] TAB_TITLES = {"오늘 소식", "새로운 기술"};
 
     private TodayFeedDatabase database;
     private DatabaseHelper dbHelper;
     private Set<String> savedUrls;
-    private TabLayout tabs;
-    private RecyclerView recyclerNews;
-    private RecyclerView recyclerTech;
     private TodayFeedAdapter newsAdapter;
     private TodayFeedAdapter techAdapter;
-    private TextView tvEmpty;
-    private boolean newsEmpty;
-    private boolean techEmpty;
+    private final RecyclerView[] recyclers = new RecyclerView[TAB_TITLES.length];
+    private final TextView[] emptyViews = new TextView[TAB_TITLES.length];
+    private final boolean[] emptyTabs = new boolean[TAB_TITLES.length];
 
     /** 화면을 보고 있는 동안 도착한 소식을 바로 반영한다. */
     private final BroadcastReceiver updateReceiver = new BroadcastReceiver() {
@@ -71,35 +69,78 @@ public class TodayFragment extends Fragment {
         database = TodayFeedDatabase.getInstance(requireContext());
         dbHelper = new DatabaseHelper(requireContext());
         savedUrls = dbHelper.getSavedArticleUrls();
-        tvEmpty = view.findViewById(R.id.tv_today_empty);
-        tabs = view.findViewById(R.id.tabs_today);
 
-        // 탭마다 목록을 따로 두어 다른 탭을 보고 돌아와도 읽던 위치가 그대로 있다.
-        recyclerNews = view.findViewById(R.id.recycler_today_news);
-        recyclerTech = view.findViewById(R.id.recycler_today_tech);
         newsAdapter = new TodayFeedAdapter((item, position) -> openItem(item, newsAdapter, position),
                 (item, position) -> toggleSaved(item));
         techAdapter = new TodayFeedAdapter((item, position) -> openItem(item, techAdapter, position),
                 (item, position) -> toggleSaved(item));
-        setupList(recyclerNews, newsAdapter);
-        setupList(recyclerTech, techAdapter);
+        newsAdapter.setSavedUrls(savedUrls);
+        techAdapter.setSavedUrls(savedUrls);
 
-        setupTabs();
+        setupPager(view.findViewById(R.id.pager_today), view.findViewById(R.id.tabs_today));
         return view;
     }
 
-    private void setupList(RecyclerView recycler, TodayFeedAdapter adapter) {
-        adapter.setSavedUrls(savedUrls);
-        recycler.setLayoutManager(new LinearLayoutManager(requireContext()));
-        recycler.setAdapter(adapter);
-        new ItemTouchHelper(new TodaySwipeCallback(adapter,
-                ContextCompat.getColor(requireContext(), R.color.color_primary_text),
-                item -> adapter.isSaved(item) ? "보관 해제" : "보관",
-                (item, position) -> {
-                    // 카드는 목록에 그대로 남으므로 밀린 자리를 되돌린다.
-                    adapter.notifyItemChanged(position);
-                    toggleSaved(item);
-                })).attachToRecyclerView(recycler);
+    private void setupPager(ViewPager2 pager, TabLayout tabs) {
+        pager.setAdapter(new PageAdapter());
+        // 두 탭을 모두 살려 두어 옆 탭을 보고 돌아와도 읽던 위치가 그대로 있다.
+        pager.setOffscreenPageLimit(1);
+        SharedPreferences prefs = requireContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        pager.setCurrentItem(prefs.getInt(KEY_TAB, TAB_NEWS), false);
+        new TabLayoutMediator(tabs, pager, (tab, position) -> tab.setText(TAB_TITLES[position])).attach();
+        pager.registerOnPageChangeCallback(new ViewPager2.OnPageChangeCallback() {
+            @Override
+            public void onPageSelected(int position) {
+                prefs.edit().putInt(KEY_TAB, position).apply();
+            }
+        });
+        tabs.addOnTabSelectedListener(new TabLayout.OnTabSelectedListener() {
+            @Override
+            public void onTabSelected(TabLayout.Tab tab) {
+            }
+
+            @Override
+            public void onTabUnselected(TabLayout.Tab tab) {
+            }
+
+            @Override
+            public void onTabReselected(TabLayout.Tab tab) {
+                RecyclerView recycler = recyclers[tab.getPosition()];
+                if (recycler != null) {
+                    recycler.smoothScrollToPosition(0);
+                }
+            }
+        });
+    }
+
+    /** 탭마다 목록 하나를 둔다. 뷰 타입을 탭 번호로 써서 페이지가 서로 바뀌어 쓰이지 않게 한다. */
+    private final class PageAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
+        @Override
+        public int getItemCount() {
+            return TAB_TITLES.length;
+        }
+
+        @Override
+        public int getItemViewType(int position) {
+            return position;
+        }
+
+        @NonNull
+        @Override
+        public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int tab) {
+            View page = LayoutInflater.from(parent.getContext()).inflate(R.layout.item_today_page, parent, false);
+            recyclers[tab] = page.findViewById(R.id.recycler_today);
+            recyclers[tab].setLayoutManager(new LinearLayoutManager(parent.getContext()));
+            recyclers[tab].setAdapter(tab == TAB_TECH ? techAdapter : newsAdapter);
+            emptyViews[tab] = page.findViewById(R.id.tv_today_empty);
+            return new RecyclerView.ViewHolder(page) {
+            };
+        }
+
+        @Override
+        public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int tab) {
+            showEmptyState(tab);
+        }
     }
 
     private void toggleSaved(TodayItem item) {
@@ -125,30 +166,6 @@ public class TodayFragment extends Fragment {
         }
         newsAdapter.refreshItem(item.getUrl());
         techAdapter.refreshItem(item.getUrl());
-    }
-
-    private void setupTabs() {
-        SharedPreferences prefs = requireContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        TabLayout.Tab saved = tabs.getTabAt(prefs.getInt(KEY_TAB, TAB_NEWS));
-        if (saved != null) {
-            saved.select();
-        }
-        tabs.addOnTabSelectedListener(new TabLayout.OnTabSelectedListener() {
-            @Override
-            public void onTabSelected(TabLayout.Tab tab) {
-                prefs.edit().putInt(KEY_TAB, tab.getPosition()).apply();
-                showSelectedTab();
-            }
-
-            @Override
-            public void onTabUnselected(TabLayout.Tab tab) {
-            }
-
-            @Override
-            public void onTabReselected(TabLayout.Tab tab) {
-                (tab.getPosition() == TAB_TECH ? recyclerTech : recyclerNews).smoothScrollToPosition(0);
-            }
-        });
     }
 
     @Override
@@ -191,16 +208,16 @@ public class TodayFragment extends Fragment {
         List<TodayItem> tech = database.getItems(TodayItem.CATEGORY_TECH);
         newsAdapter.setItems(news, lastReceived);
         techAdapter.setItems(tech, lastReceived);
-        newsEmpty = news.isEmpty();
-        techEmpty = tech.isEmpty();
-        showSelectedTab();
+        emptyTabs[TAB_NEWS] = news.isEmpty();
+        emptyTabs[TAB_TECH] = tech.isEmpty();
+        showEmptyState(TAB_NEWS);
+        showEmptyState(TAB_TECH);
     }
 
-    private void showSelectedTab() {
-        boolean techSelected = tabs.getSelectedTabPosition() == TAB_TECH;
-        recyclerNews.setVisibility(techSelected ? View.GONE : View.VISIBLE);
-        recyclerTech.setVisibility(techSelected ? View.VISIBLE : View.GONE);
-        tvEmpty.setVisibility((techSelected ? techEmpty : newsEmpty) ? View.VISIBLE : View.GONE);
+    private void showEmptyState(int tab) {
+        if (emptyViews[tab] != null) {
+            emptyViews[tab].setVisibility(emptyTabs[tab] ? View.VISIBLE : View.GONE);
+        }
     }
 
     private void openItem(TodayItem item, TodayFeedAdapter adapter, int position) {

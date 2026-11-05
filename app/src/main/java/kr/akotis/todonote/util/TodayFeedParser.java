@@ -13,8 +13,9 @@ import kr.akotis.todonote.model.TodayItem;
 
 /**
  * FCM 데이터 메시지의 items 값을 읽는다.
- * 형식: [{"c":"분류","s":"출처","t":"제목","d":"요약","u":"https://...","i":"썸네일 주소(선택)","a":AI 요약이면 1(선택),"p":발행시각(초)}]
+ * 형식: [{"c":"분류","s":"출처","t":"제목","d":"요약","u":"https://...","i":"썸네일 주소(선택)","ai":"AI 요약(선택)","p":발행시각(초)}]
  * 필드 이름을 줄인 것은 FCM 메시지 크기 제한(4KB) 때문이다.
+ * "a":1은 1.15까지의 수집기가 보내는 값으로, d가 AI 요약이라는 뜻이다.
  */
 public final class TodayFeedParser {
     private static final int MAX_ITEMS_PER_MESSAGE = 100;
@@ -57,6 +58,7 @@ public final class TodayFeedParser {
                     imageUrl(text(object, "i")),
                     publishedAtMillis(object.optLong("p", 0), now));
             item.setAiSummary(object.optInt("a", 0) == 1);
+            item.setAiText(clip(text(object, "ai"), MAX_SUMMARY_LENGTH));
             items.add(item);
         }
         return items;

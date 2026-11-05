@@ -16,49 +16,12 @@
         app:tabIndicatorFullWidth="true"
         app:tabMode="fixed"
         app:tabSelectedTextColor="@color/color_primary_text"
-        app:tabTextColor="@color/color_text_light">
+        app:tabTextColor="@color/color_text_light" />
 
-        <com.google.android.material.tabs.TabItem
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="오늘 소식" />
-
-        <com.google.android.material.tabs.TabItem
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="새로운 기술" />
-    </com.google.android.material.tabs.TabLayout>
-
-    <FrameLayout
+    <androidx.viewpager2.widget.ViewPager2
+        android:id="@+id/pager_today"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1">
-
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/recycler_today_news"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:clipToPadding="false"
-            android:paddingBottom="16dp" />
-
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/recycler_today_tech"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:clipToPadding="false"
-            android:paddingBottom="16dp"
-            android:visibility="gone" />
-
-        <TextView
-            android:id="@+id/tv_today_empty"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="48dp"
-            android:gravity="center"
-            android:text="아직 받은 소식이 없습니다.\n서버에서 보내면 여기에 표시됩니다."
-            android:textColor="@color/color_text_light"
-            android:textSize="14sp"
-            android:visibility="gone" />
-    </FrameLayout>
+        android:layout_weight="1" />
 
 </LinearLayout>

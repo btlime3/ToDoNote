@@ -15,86 +15,123 @@
     app:strokeWidth="0dp">
 
     <LinearLayout
-        android:id="@+id/today_item_content"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
+        android:orientation="vertical"
         android:padding="12dp">
 
         <LinearLayout
-            android:layout_width="0dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical">
+            android:orientation="horizontal">
 
             <LinearLayout
-                android:layout_width="match_parent"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/tv_today_source"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:textColor="@color/color_primary_text"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
+
+                    <ImageView
+                        android:id="@+id/iv_today_saved"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_marginStart="8dp"
+                        android:contentDescription="보관함에 저장됨"
+                        android:src="@drawable/ic_bookmark"
+                        android:visibility="gone"
+                        app:tint="@color/color_primary_text" />
+
+                    <TextView
+                        android:id="@+id/tv_today_time"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:textColor="@color/color_text_light"
+                        android:textSize="12sp" />
+                </LinearLayout>
 
                 <TextView
-                    android:id="@+id/tv_today_source"
-                    android:layout_width="0dp"
+                    android:id="@+id/tv_today_title"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
+                    android:layout_marginTop="4dp"
                     android:ellipsize="end"
-                    android:maxLines="1"
-                    android:textColor="@color/color_primary_text"
-                    android:textSize="12sp"
+                    android:maxLines="3"
+                    android:textColor="@color/color_text_dark"
+                    android:textSize="15sp"
                     android:textStyle="bold" />
 
-                <ImageView
-                    android:id="@+id/iv_today_saved"
-                    android:layout_width="14dp"
-                    android:layout_height="14dp"
-                    android:layout_marginStart="8dp"
-                    android:contentDescription="보관함에 저장됨"
-                    android:src="@drawable/ic_bookmark"
-                    android:visibility="gone"
-                    app:tint="@color/color_primary_text" />
-
                 <TextView
-                    android:id="@+id/tv_today_time"
-                    android:layout_width="wrap_content"
+                    android:id="@+id/tv_today_summary"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="8dp"
-                    android:textColor="@color/color_text_light"
-                    android:textSize="12sp" />
+                    android:layout_marginTop="4dp"
+                    android:ellipsize="end"
+                    android:maxLines="2"
+                    android:textColor="@color/color_text_medium"
+                    android:textSize="13sp" />
             </LinearLayout>
 
+            <ImageView
+                android:id="@+id/iv_today_thumbnail"
+                android:layout_width="84dp"
+                android:layout_height="84dp"
+                android:layout_marginStart="12dp"
+                android:background="@drawable/bg_today_thumbnail"
+                android:clipToOutline="true"
+                android:contentDescription="@null"
+                android:scaleType="centerCrop"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <!-- 카드 전체 폭을 쓰고 줄 수를 제한하지 않아 AI 요약을 끝까지 읽을 수 있다. -->
+        <LinearLayout
+            android:id="@+id/box_today_ai"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/bg_today_ai"
+            android:orientation="vertical"
+            android:paddingStart="10dp"
+            android:paddingTop="8dp"
+            android:paddingEnd="10dp"
+            android:paddingBottom="8dp"
+            android:visibility="gone">
+
             <TextView
-                android:id="@+id/tv_today_title"
-                android:layout_width="match_parent"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:ellipsize="end"
-                android:maxLines="3"
-                android:textColor="@color/color_text_dark"
-                android:textSize="15sp"
+                android:text="AI 요약"
+                android:textColor="@color/color_primary_text"
+                android:textSize="11sp"
                 android:textStyle="bold" />
 
             <TextView
-                android:id="@+id/tv_today_summary"
+                android:id="@+id/tv_today_ai"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:ellipsize="end"
-                android:maxLines="2"
-                android:textColor="@color/color_text_medium"
+                android:layout_marginTop="2dp"
+                android:lineSpacingExtra="2dp"
+                android:textColor="@color/color_text_dark"
                 android:textSize="13sp" />
         </LinearLayout>
-
-        <ImageView
-            android:id="@+id/iv_today_thumbnail"
-            android:layout_width="84dp"
-            android:layout_height="84dp"
-            android:layout_marginStart="12dp"
-            android:background="@drawable/bg_today_thumbnail"
-            android:clipToOutline="true"
-            android:contentDescription="@null"
-            android:scaleType="centerCrop"
-            android:visibility="gone" />
     </LinearLayout>
 
 </com.google.android.material.card.MaterialCardView>

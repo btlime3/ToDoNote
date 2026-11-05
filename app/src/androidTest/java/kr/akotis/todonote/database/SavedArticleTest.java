@@ -76,6 +76,34 @@ public class SavedArticleTest {
         assertFalse(helper.getSavedArticleUrls().contains("https://e.com/a"));
     }
 
+    /** 1.15의 v15 DB에서 올려도 저장한 글이 그대로이고, 옛 AI 요약은 상자에 나와야 한다. */
+    @Test
+    public void upgradeFromVersion15KeepsSavedArticlesAndAddsAiText() {
+        SQLiteDatabase db = helper.getWritableDatabase();
+        db.execSQL("DROP TABLE saved_article");
+        db.execSQL("CREATE TABLE saved_article (id INTEGER PRIMARY KEY AUTOINCREMENT, url TEXT NOT NULL UNIQUE, "
+                + "category TEXT, source TEXT, title TEXT NOT NULL, summary TEXT, image_url TEXT, "
+                + "ai_summary INTEGER NOT NULL DEFAULT 0, published_at INTEGER NOT NULL DEFAULT 0, saved_at INTEGER NOT NULL)");
+        db.execSQL("INSERT INTO saved_article (url, category, title, summary, ai_summary, saved_at) VALUES "
+                + "('https://e.com/old', 'tech', '옛 글', '옛 AI 요약', 1, 100)");
+        db.setVersion(15);
+        helper.close();
+
+        helper = new DatabaseHelper(context, databaseName);
+        TodayItem fresh = article("https://e.com/new");
+        fresh.setAiSummary(false);
+        fresh.setAiText("새 AI 요약");
+        helper.saveArticle(fresh, 200);
+
+        List<TodayItem> saved = helper.getSavedArticles();
+        assertEquals(16, helper.getReadableDatabase().getVersion());
+        assertEquals(2, saved.size());
+        assertEquals("새 AI 요약", saved.get(0).getDisplayAiText());
+        assertEquals("요약", saved.get(0).getDisplaySummary());
+        assertEquals("옛 AI 요약", saved.get(1).getDisplayAiText());
+        assertEquals("", saved.get(1).getDisplaySummary());
+    }
+
     /** 1.13 이전의 v14 DB와 그 백업을 열어도 메모가 그대로이고 보관함을 쓸 수 있어야 한다. */
     @Test
     public void upgradeFromVersion14AddsTableAndKeepsData() {
@@ -89,7 +117,7 @@ public class SavedArticleTest {
 
         assertEquals(1, helper.getSavedArticles().size());
         SQLiteDatabase db = helper.getReadableDatabase();
-        assertEquals(15, db.getVersion());
+        assertEquals(16, db.getVersion());
         try (android.database.Cursor cursor = db.rawQuery("SELECT content FROM memo", null)) {
             assertTrue(cursor.moveToFirst());
             assertEquals("기존 메모", cursor.getString(0));

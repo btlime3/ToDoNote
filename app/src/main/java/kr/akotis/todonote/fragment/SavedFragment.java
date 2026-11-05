@@ -11,9 +11,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
-import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
-import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -23,7 +21,6 @@ import java.util.List;
 
 import kr.akotis.todonote.R;
 import kr.akotis.todonote.adapter.TodayFeedAdapter;
-import kr.akotis.todonote.adapter.TodaySwipeCallback;
 import kr.akotis.todonote.database.DatabaseHelper;
 import kr.akotis.todonote.model.TodayItem;
 
@@ -44,10 +41,6 @@ public class SavedFragment extends Fragment {
         RecyclerView recycler = view.findViewById(R.id.recycler_saved);
         recycler.setLayoutManager(new LinearLayoutManager(requireContext()));
         recycler.setAdapter(adapter);
-        new ItemTouchHelper(new TodaySwipeCallback(adapter,
-                ContextCompat.getColor(requireContext(), R.color.color_delete),
-                item -> "보관 해제",
-                (item, position) -> remove(item))).attachToRecyclerView(recycler);
         return view;
     }
 

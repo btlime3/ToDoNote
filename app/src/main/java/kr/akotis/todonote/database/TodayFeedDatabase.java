@@ -22,7 +22,7 @@ public class TodayFeedDatabase extends SQLiteOpenHelper {
     public static final long RETENTION_MILLIS = TimeUnit.DAYS.toMillis(14);
 
     private static final String DATABASE_NAME = "TodayFeed.db";
-    private static final int DATABASE_VERSION = 3;
+    private static final int DATABASE_VERSION = 4;
 
     private static final String TABLE = "today_item";
     private static final String COL_ID = "id";
@@ -36,6 +36,7 @@ public class TodayFeedDatabase extends SQLiteOpenHelper {
     private static final String COL_RECEIVED_AT = "received_at";
     private static final String COL_READ = "is_read";
     private static final String COL_AI_SUMMARY = "ai_summary";
+    private static final String COL_AI_TEXT = "ai_text";
 
     /** 발행 시각을 모르는 항목은 받은 시각으로 정렬한다. */
     private static final String NEWEST_FIRST =
@@ -69,7 +70,8 @@ public class TodayFeedDatabase extends SQLiteOpenHelper {
                 COL_PUBLISHED_AT + " INTEGER NOT NULL DEFAULT 0, " +
                 COL_RECEIVED_AT + " INTEGER NOT NULL, " +
                 COL_READ + " INTEGER NOT NULL DEFAULT 0, " +
-                COL_AI_SUMMARY + " INTEGER NOT NULL DEFAULT 0)");
+                COL_AI_SUMMARY + " INTEGER NOT NULL DEFAULT 0, " +
+                COL_AI_TEXT + " TEXT)");
     }
 
     @Override
@@ -84,6 +86,9 @@ public class TodayFeedDatabase extends SQLiteOpenHelper {
         }
         if (oldVersion < 3) {
             db.execSQL("ALTER TABLE " + TABLE + " ADD COLUMN " + COL_AI_SUMMARY + " INTEGER NOT NULL DEFAULT 0");
+        }
+        if (oldVersion < 4) {
+            db.execSQL("ALTER TABLE " + TABLE + " ADD COLUMN " + COL_AI_TEXT + " TEXT");
         }
     }
 
@@ -108,6 +113,10 @@ public class TodayFeedDatabase extends SQLiteOpenHelper {
                 // 다시 받을 때 이미지를 찾지 못했어도 이미 있는 썸네일은 지우지 않는다.
                 if (item.getImageUrl() != null && !item.getImageUrl().isEmpty()) {
                     values.put(COL_IMAGE_URL, item.getImageUrl());
+                }
+                // AI 한도에 걸려 원문으로 다시 받아도 이미 있는 요약은 지우지 않는다.
+                if (item.getAiText() != null && !item.getAiText().isEmpty()) {
+                    values.put(COL_AI_TEXT, item.getAiText());
                 }
                 int updated = db.update(TABLE, values, COL_URL + " = ?", new String[]{item.getUrl()});
                 if (updated == 0) {
@@ -153,6 +162,7 @@ public class TodayFeedDatabase extends SQLiteOpenHelper {
                 item.setReceivedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_RECEIVED_AT)));
                 item.setRead(cursor.getInt(cursor.getColumnIndexOrThrow(COL_READ)) == 1);
                 item.setAiSummary(cursor.getInt(cursor.getColumnIndexOrThrow(COL_AI_SUMMARY)) == 1);
+                item.setAiText(cursor.getString(cursor.getColumnIndexOrThrow(COL_AI_TEXT)));
                 items.add(item);
             }
         }

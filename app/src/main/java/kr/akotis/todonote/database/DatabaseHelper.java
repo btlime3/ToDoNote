@@ -38,7 +38,7 @@ import kr.akotis.todonote.model.TodayItem;
 public class DatabaseHelper extends SQLiteOpenHelper {
 
     private static final String DATABASE_NAME = "ToDoNote.db";
-    private static final int DATABASE_VERSION = 15;
+    private static final int DATABASE_VERSION = 16;
     public static final int MAX_STORED_MESSAGES = 30;
     /** 노트 하나당 보관하는 이전 버전 개수. */
     public static final int MAX_NOTE_VERSIONS = 10;
@@ -141,6 +141,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     private static final String COL_SAVED_SUMMARY = "summary";
     private static final String COL_SAVED_IMAGE_URL = "image_url";
     private static final String COL_SAVED_AI_SUMMARY = "ai_summary";
+    private static final String COL_SAVED_AI_TEXT = "ai_text";
     private static final String COL_SAVED_PUBLISHED_AT = "published_at";
     private static final String COL_SAVED_AT = "saved_at";
     private static final String CREATE_SAVED_ARTICLE_TABLE = "CREATE TABLE IF NOT EXISTS " + TABLE_SAVED_ARTICLE + " (" +
@@ -152,6 +153,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             COL_SAVED_SUMMARY + " TEXT, " +
             COL_SAVED_IMAGE_URL + " TEXT, " +
             COL_SAVED_AI_SUMMARY + " INTEGER NOT NULL DEFAULT 0, " +
+            COL_SAVED_AI_TEXT + " TEXT, " +
             COL_SAVED_PUBLISHED_AT + " INTEGER NOT NULL DEFAULT 0, " +
             COL_SAVED_AT + " INTEGER NOT NULL)";
 
@@ -518,6 +520,9 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         if (oldVersion < 15) {
             // 나중에 볼 소식을 저장하는 보관함 테이블 추가
             db.execSQL(CREATE_SAVED_ARTICLE_TABLE);
+        } else if (oldVersion < 16) {
+            // AI 요약을 원문 요약과 따로 보관한다. 위의 새 테이블에는 이미 이 컬럼이 있다.
+            db.execSQL("ALTER TABLE " + TABLE_SAVED_ARTICLE + " ADD COLUMN " + COL_SAVED_AI_TEXT + " TEXT");
         }
     }
 
@@ -531,6 +536,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         values.put(COL_SAVED_SUMMARY, item.getSummary());
         values.put(COL_SAVED_IMAGE_URL, item.getImageUrl());
         values.put(COL_SAVED_AI_SUMMARY, item.isAiSummary() ? 1 : 0);
+        values.put(COL_SAVED_AI_TEXT, item.getAiText());
         values.put(COL_SAVED_PUBLISHED_AT, item.getPublishedAt());
         values.put(COL_SAVED_AT, savedAt);
         getWritableDatabase().insertWithOnConflict(TABLE_SAVED_ARTICLE, null, values, SQLiteDatabase.CONFLICT_IGNORE);
@@ -557,6 +563,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 item.setId(cursor.getLong(cursor.getColumnIndexOrThrow(COL_SAVED_ID)));
                 item.setReceivedAt(cursor.getLong(cursor.getColumnIndexOrThrow(COL_SAVED_AT)));
                 item.setAiSummary(cursor.getInt(cursor.getColumnIndexOrThrow(COL_SAVED_AI_SUMMARY)) == 1);
+                item.setAiText(cursor.getString(cursor.getColumnIndexOrThrow(COL_SAVED_AI_TEXT)));
                 items.add(item);
             }
         }

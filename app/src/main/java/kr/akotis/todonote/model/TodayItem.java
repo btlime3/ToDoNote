@@ -18,6 +18,7 @@ public class TodayItem {
     private long receivedAt;
     private boolean read;
     private boolean aiSummary;
+    private String aiText;
 
     public TodayItem(String url, String category, String source, String title, String summary,
                      String imageUrl, long publishedAt) {
@@ -89,13 +90,43 @@ public class TodayItem {
         this.read = read;
     }
 
-    /** 요약을 AI가 만들었는지. 카드에 표시해서 원문과 구분한다. */
+    /** 1.15까지의 형식. 요약 칸의 글을 AI가 만들었는지를 뜻한다. 이미 저장된 글을 위해 남겨 둔다. */
     public boolean isAiSummary() {
         return aiSummary;
     }
 
     public void setAiSummary(boolean aiSummary) {
         this.aiSummary = aiSummary;
+    }
+
+    /** @return 원문 요약과 따로 받은 AI 요약. 없으면 null 또는 빈 문자열 */
+    public String getAiText() {
+        return aiText;
+    }
+
+    public void setAiText(String aiText) {
+        this.aiText = aiText;
+    }
+
+    /** 옛 형식의 AI 요약은 새로운 기술 탭에서만 상자로 옮긴다. 오늘 소식에는 AI 요약 상자를 두지 않는다. */
+    private boolean summaryIsAiBox() {
+        return aiSummary && CATEGORY_TECH.equals(category);
+    }
+
+    /** @return 카드 본문에 보여 줄 글. 없으면 null 또는 빈 문자열 */
+    public String getDisplaySummary() {
+        return summaryIsAiBox() ? "" : summary;
+    }
+
+    /** @return 카드 안의 상자에 보여 줄 AI 요약. 없으면 빈 문자열 */
+    public String getDisplayAiText() {
+        if (!CATEGORY_TECH.equals(category)) {
+            return "";
+        }
+        if (aiText != null && !aiText.isEmpty()) {
+            return aiText;
+        }
+        return summaryIsAiBox() && summary != null ? summary : "";
     }
 
     /** 발행 시각을 모르면 받은 시각을 쓴다. */

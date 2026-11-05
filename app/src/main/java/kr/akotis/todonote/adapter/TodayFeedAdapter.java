@@ -1,12 +1,12 @@
 package kr.akotis.todonote.adapter;
 
+import android.annotation.SuppressLint;
 import android.graphics.Typeface;
-import android.text.SpannableStringBuilder;
-import android.text.Spanned;
-import android.text.style.ForegroundColorSpan;
-import android.text.style.StyleSpan;
+import android.view.HapticFeedbackConstants;
 import android.view.LayoutInflater;
+import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.view.ViewGroup;
 import android.widget.ImageView;
 import android.widget.TextView;
@@ -36,9 +36,9 @@ import kr.akotis.todonote.util.TodayThumbnailLoader;
 public class TodayFeedAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     private static final int TYPE_HEADER = 0;
     private static final int TYPE_ITEM = 1;
-    private static final float READ_ALPHA = 0.55f;
+    /** 시스템 기본값(0.4초)은 목록을 넘기다 잘못 눌리기 쉬워서 더 오래 눌렀을 때만 보관한다. */
+    private static final long SAVE_PRESS_MILLIS = 800;
     private static final long NEW_WINDOW_MILLIS = TimeUnit.DAYS.toMillis(1);
-    private static final String AI_LABEL = "AI 요약 · ";
     private static final DateTimeFormatter DAY_FORMAT = DateTimeFormatter.ofPattern("M월 d일 EEEE", Locale.KOREAN);
 
     public interface OnItemClickListener {
@@ -79,24 +79,11 @@ public class TodayFeedAdapter extends RecyclerView.Adapter<RecyclerView.ViewHold
         this.savedUrls = savedUrls;
     }
 
-    /** @return 그 위치의 소식. 날짜 머리글이거나 범위를 벗어나면 null */
-    public TodayItem itemAt(int position) {
-        if (position < 0 || position >= rows.size()) {
-            return null;
-        }
-        Object row = rows.get(position);
-        return row instanceof TodayItem ? (TodayItem) row : null;
-    }
-
-    public boolean isSaved(TodayItem item) {
-        return savedUrls.contains(item.getUrl());
-    }
-
     /** 다른 탭에서 저장 상태가 바뀔 수 있으므로 주소로 찾아 다시 그린다. */
     public void refreshItem(String url) {
         for (int i = 0; i < rows.size(); i++) {
-            TodayItem item = itemAt(i);
-            if (item != null && url.equals(item.getUrl())) {
+            Object row = rows.get(i);
+            if (row instanceof TodayItem && url.equals(((TodayItem) row).getUrl())) {
                 notifyItemChanged(i);
             }
         }
@@ -201,8 +188,11 @@ public class TodayFeedAdapter extends RecyclerView.Adapter<RecyclerView.ViewHold
         private final TextView tvSummary;
         private final ImageView ivThumbnail;
         private final ImageView ivSaved;
-        private final View content;
+        private final View boxAi;
+        private final TextView tvAi;
         private final MaterialCardView card;
+        private final Runnable savePress = this::onSavePress;
+        private boolean ignoreClick;
 
         ItemViewHolder(@NonNull View itemView) {
             super(itemView);
@@ -212,48 +202,78 @@ public class TodayFeedAdapter extends RecyclerView.Adapter<RecyclerView.ViewHold
             tvSummary = itemView.findViewById(R.id.tv_today_summary);
             ivThumbnail = itemView.findViewById(R.id.iv_today_thumbnail);
             ivSaved = itemView.findViewById(R.id.iv_today_saved);
-            content = itemView.findViewById(R.id.today_item_content);
+            boxAi = itemView.findViewById(R.id.box_today_ai);
+            tvAi = itemView.findViewById(R.id.tv_today_ai);
             card = (MaterialCardView) itemView;
             itemView.setOnClickListener(v -> {
                 int position = getBindingAdapterPosition();
-                if (position != RecyclerView.NO_POSITION) {
+                if (!ignoreClick && position != RecyclerView.NO_POSITION) {
                     listener.onItemClick((TodayItem) rows.get(position), position);
                 }
             });
-            itemView.setOnLongClickListener(v -> {
-                int position = getBindingAdapterPosition();
-                if (position == RecyclerView.NO_POSITION) {
-                    return false;
+            watchSavePress();
+        }
+
+        /** 눌림 효과와 짧은 클릭은 카드가 그대로 처리하도록 터치를 소비하지 않는다. */
+        @SuppressLint("ClickableViewAccessibility")
+        private void watchSavePress() {
+            int touchSlop = ViewConfiguration.get(itemView.getContext()).getScaledTouchSlop();
+            float[] down = new float[2];
+            itemView.setOnTouchListener((v, event) -> {
+                switch (event.getActionMasked()) {
+                    case MotionEvent.ACTION_DOWN:
+                        ignoreClick = false;
+                        down[0] = event.getX();
+                        down[1] = event.getY();
+                        v.postDelayed(savePress, SAVE_PRESS_MILLIS);
+                        break;
+                    case MotionEvent.ACTION_MOVE:
+                        // 카드 안에서 옆으로 밀다 떼어도 카드는 클릭으로 처리하므로 여기서 막는다.
+                        if (Math.hypot(event.getX() - down[0], event.getY() - down[1]) > touchSlop) {
+                            v.removeCallbacks(savePress);
+                            ignoreClick = true;
+                        }
+                        break;
+                    case MotionEvent.ACTION_UP:
+                    case MotionEvent.ACTION_CANCEL:
+                        v.removeCallbacks(savePress);
+                        break;
+                    default:
+                        break;
                 }
-                longClickListener.onItemLongClick((TodayItem) rows.get(position), position);
-                return true;
+                return false;
             });
         }
 
+        private void onSavePress() {
+            int position = getBindingAdapterPosition();
+            if (position != RecyclerView.NO_POSITION) {
+                // 보관한 뒤 손을 뗄 때 링크가 열리지 않게 한다.
+                ignoreClick = true;
+                itemView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+                longClickListener.onItemLongClick((TodayItem) rows.get(position), position);
+            }
+        }
+
         void bind(TodayItem item) {
+            // 누르는 동안 새 소식이 도착해 다른 글로 바뀌면 그 글이 보관되지 않게 한다.
+            itemView.removeCallbacks(savePress);
             tvSource.setText(item.getSource());
             tvTime.setText(relativeTime(item.getDisplayTime(), System.currentTimeMillis()));
             tvTitle.setText(item.getTitle());
-            boolean hasSummary = item.getSummary() != null && !item.getSummary().isEmpty();
+            String summary = item.getDisplaySummary();
+            boolean hasSummary = summary != null && !summary.isEmpty();
             tvSummary.setVisibility(hasSummary ? View.VISIBLE : View.GONE);
-            tvSummary.setText(hasSummary ? summaryText(item) : "");
+            tvSummary.setText(hasSummary ? summary : "");
+            String aiText = item.getDisplayAiText();
+            boxAi.setVisibility(aiText.isEmpty() ? View.GONE : View.VISIBLE);
+            tvAi.setText(aiText);
             TodayThumbnailLoader.load(ivThumbnail, item.getImageUrl());
-            ivSaved.setVisibility(highlightNew && isSaved(item) ? View.VISIBLE : View.GONE);
-            // 새 소식은 배경으로 눈에 띄게 하고, 읽은 항목은 흐리게 표시한다.
+            ivSaved.setVisibility(highlightNew && savedUrls.contains(item.getUrl()) ? View.VISIBLE : View.GONE);
+            // 새 소식은 배경으로 눈에 띄게 한다. 읽은 글은 제목 굵기만 줄여 흐려지지 않게 구분한다.
             card.setCardBackgroundColor(ContextCompat.getColor(itemView.getContext(),
                     highlightNew && isNew(item) ? R.color.color_today_new : R.color.color_surface));
-            content.setAlpha(item.isRead() ? READ_ALPHA : 1f);
-        }
-
-        private CharSequence summaryText(TodayItem item) {
-            if (!item.isAiSummary()) {
-                return item.getSummary();
-            }
-            SpannableStringBuilder text = new SpannableStringBuilder(AI_LABEL).append(item.getSummary());
-            int color = ContextCompat.getColor(itemView.getContext(), R.color.color_primary_text);
-            text.setSpan(new ForegroundColorSpan(color), 0, AI_LABEL.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-            text.setSpan(new StyleSpan(Typeface.BOLD), 0, AI_LABEL.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-            return text;
+            tvTitle.setTypeface(Typeface.DEFAULT, item.isRead() ? Typeface.NORMAL : Typeface.BOLD);
         }
 
         /** 아직 읽지 않았고, 오늘 나온 글이거나 하루 안에 받은 글이다. */
