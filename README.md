@@ -1,119 +1,40 @@
 # ToDoNote
 
-메모와 노트를 중심으로 쓰는 개인용 Android 앱입니다. 메모와 노트는 기기 안의 SQLite에 저장하고, 알림과 오늘의 소식만 Firebase Cloud Messaging으로 받습니다.
+메모와 노트를 중심으로 쓰는 개인용 Android 앱입니다. 데이터는 기기 안의 SQLite에 저장하고, 알림과 오늘의 소식만 Firebase Cloud Messaging(FCM)으로 받습니다.
 
-## 주요 기능
+## 기능
 
 | 화면 | 내용 |
 |---|---|
-| 오늘 | 오늘 소식(IT, AI, 보안 뉴스)과 새로운 기술(연구소 발표, 논문, 새 모델) 두 탭. 날짜별 묶음, 썸네일 카드, 새 소식 강조, 누르면 원문 열기 |
-| 보관함 | 소식 카드를 길게 누르거나 밀어서 저장. 내보내기에 포함 |
-| 메모 | 짧은 메모 작성, 드래그 정렬, 스와이프 수정·삭제, 링크 자동 인식, 접이식 검색 |
-| 노트 | 제목과 본문 작성, 3열 목록, 접이식 검색, 지문·암호 잠금 |
-| 할 일 | 메뉴에서 열기. 남은 할 일과 완료한 일, 시간 알림, 홈 화면 위젯 |
-| 알림 | FCM으로 받은 알림을 최대 30개 보관, 읽지 않은 개수 표시 |
-| 휴지통 | 삭제한 메모, 노트, 알림의 복원과 영구 삭제 |
+| 오늘 | 오늘 소식(IT, AI, 보안 뉴스)과 새로운 기술(연구소 발표, 논문, 새 모델). 새 소식 강조, 누르면 원문 열기 |
+| 보관함 | 소식 카드를 길게 누르거나 밀어서 저장 |
+| 메모 | 드래그 정렬, 스와이프 수정·삭제, 링크 인식, 접이식 검색 |
+| 노트 | 3열 목록, 접이식 검색, 수정 이력 10개, 지문·암호 잠금 |
+| 할 일 | 시간 알림, 홈 화면 위젯 |
+| 알림 | FCM 알림 최대 30개 보관, 읽지 않은 개수 표시 |
+| 휴지통 | 메모, 노트, 알림의 복원과 영구 삭제 |
 
-### 데이터 보호
+백업은 다운로드 폴더로 내보내고 다시 가져올 수 있으며, 보관함도 포함됩니다. 편집 중인 내용은 임시 저장되고, DB 손상이 감지되면 사본을 남깁니다.
 
-- **편집 보호:** 저장하지 않은 내용은 임시 저장되어, 앱이 종료되어도 다시 열 때 복원할 수 있습니다.
-- **수정 이력:** 노트마다 이전 버전을 최근 10개까지 보관합니다.
-- **백업:** 다운로드 폴더로 내보내고 다시 가져올 수 있습니다. 가져오기 전에 파일을 검사하고, 교체 전 데이터를 다운로드 폴더에 저장합니다.
-- **손상 대비:** DB 손상이 감지되면 파일이 삭제되기 전에 사본을 남깁니다.
+## 서버
 
-## 오늘 화면 수집기
+오늘 화면의 소식은 별도 서버가 모아 FCM 데이터 메시지로 보냅니다. 서버 코드는 기기 토큰과 키를 함께 다루므로 이 저장소에 포함하지 않습니다. 앱은 아래 형식을 받으면 알림 없이 저장합니다.
 
-`server/today_feed/`는 무료 소스에서 소식을 모아 FCM으로 보내는 Python 스크립트입니다. API 키 없이 동작하고, 서버의 cron으로 실행합니다. **앱을 1.14 이상으로 먼저 업데이트한 뒤에 전송하세요.**
+```json
+{"type": "today", "items": "[{\"c\":\"tech\",\"s\":\"출처\",\"t\":\"제목\",\"d\":\"요약\",\"u\":\"https://...\",\"p\":1793548800}]"}
+```
 
-| 파일 | 내용 |
-|---|---|
-| `run.sh` | cron이 실행하는 파일. 겹침 방지, 15분 제한, 로그 기록 |
-| `collect.py`, `feedlib.py`, `enrich.py` | 수집, 공통 기능, AI 처리 |
-| `sources.json` | 소스 목록, 관심사, 개수 제한 |
-| `today_feed.env.example` | 환경 변수 예시 |
-
-### 서버 설정
-
-1. 저장소를 `~/ToDoNote`에 받고, 전송에 쓰는 패키지를 설치합니다. Python 3.9 이상이 필요합니다.
-
-   ```bash
-   pip3 install firebase-admin
-   ```
-
-2. 환경 변수 파일을 만들고 `TODAY_FCM_TOKEN`과 `GOOGLE_APPLICATION_CREDENTIALS`를 채웁니다. 이 파일과 서비스 계정 키는 저장소 밖에 둡니다.
-
-   ```bash
-   mkdir -p ~/.config && cp ~/ToDoNote/server/today_feed/today_feed.env.example ~/.config/today_feed.env && chmod 600 ~/.config/today_feed.env
-   ```
-
-3. 보내지 않고 결과를 확인합니다. `실패` 줄이 있는지 봅니다.
-
-   ```bash
-   ~/ToDoNote/server/today_feed/run.sh --dry-run
-   ```
-
-   ```bash
-   tail -60 ~/today_feed.log
-   ```
-
-4. 한 번 보내고 휴대폰에서 확인합니다.
-
-   ```bash
-   ~/ToDoNote/server/today_feed/run.sh
-   ```
-
-5. `crontab -e`에 등록합니다. 서버 시간대는 `date`로 확인합니다. 아래는 한국 시각 07:05, 12:05, 18:05, 22:05에 실행합니다.
-
-   서버가 KST일 때:
-
-   ```cron
-   5 7,12,18,22 * * * $HOME/ToDoNote/server/today_feed/run.sh
-   ```
-
-   서버가 UTC일 때:
-
-   ```cron
-   5 22,3,9,13 * * * $HOME/ToDoNote/server/today_feed/run.sh
-   ```
-
-실행은 하루 4회 이하로 둡니다. FCM은 꺼진 기기의 메시지를 100개까지만 보관하고, 넘으면 일반 알림까지 모두 버립니다.
-
-### 뉴스 양과 관심사
-
-`sources.json`의 `interests`, `interest_keywords`, `news_block_keywords`로 관심사를 바꿉니다. 실행당 개수는 `max_items_per_category`로 정합니다. 기본값은 탭마다 8건입니다.
-
-### 한국어 번역과 AI 요약 (선택)
-
-환경 변수 파일의 세 값을 채우면 다음 실행부터 제목 번역, 1~2문장 요약, 관심도 판단을 합니다. OpenAI 호환 API이면 어디든 쓸 수 있습니다. 키가 비어 있거나 호출이 실패하면 원문을 보냅니다.
-
-| 변수 | 내용 |
-|---|---|
-| `TODAY_AI_API_KEY` | API 키. 비어 있으면 AI를 쓰지 않음 |
-| `TODAY_AI_MODEL` | 모델 이름. 비우면 `gemini-3.5-flash-lite` |
-| `TODAY_AI_BASE_URL` | API 주소. `.../v1`과 `.../v1/chat/completions` 모두 됨. 비우면 Gemini API |
-
-Gemini API 무료 등급은 입력을 Google 제품 개선에 사용합니다. 공개 글의 제목과 앞부분, 관심사 문장을 보내며, 메모와 노트는 보내지 않습니다.
-
-## 기술 구성
-
-- Java 17, Android SDK (minSdk 34, targetSdk 36)
-- SQLite (`SQLiteOpenHelper`)
-- WorkManager, AndroidX Biometric
-- Firebase Cloud Messaging, Firebase Analytics
+`c`는 탭(`news`, `tech`), `p`는 발행 시각(초)입니다. 선택 값으로 `i`(썸네일 주소)와 `a`(AI 요약이면 1)가 있습니다. 메시지 하나는 4096바이트 이하여야 합니다.
 
 ## 빌드
 
-Android Studio 또는 JDK 17과 Android SDK가 필요합니다.
-
-1. Firebase 프로젝트에 패키지 이름 `kr.akotis.todonote`로 Android 앱을 등록합니다.
-2. 내려받은 `google-services.json`을 `app/` 폴더에 넣습니다. 이 파일은 저장소에 포함되어 있지 않으며, 없으면 빌드되지 않습니다.
-3. 빌드합니다.
+JDK 17과 Android SDK가 필요합니다. Firebase에서 받은 `google-services.json`을 `app/`에 넣습니다.
 
 ```bash
 ./gradlew assembleDebug
 ```
 
-release 빌드에는 직접 만든 서명 키가 필요합니다. 서명 키와 서명 설정은 저장소에 없습니다.
+release 빌드는 R8로 코드와 리소스를 줄이고 난독화합니다. 서명 키는 저장소에 없습니다. 오류 로그의 원래 이름은 `app/build/outputs/mapping/release/mapping.txt`로 찾습니다.
 
 ## 테스트
 
@@ -121,39 +42,9 @@ release 빌드에는 직접 만든 서명 키가 필요합니다. 서명 키와 
 ./gradlew testDebugUnitTest
 ```
 
-```bash
-./gradlew connectedDebugAndroidTest
-```
-
-계측 테스트는 연결된 기기나 에뮬레이터가 필요합니다. 테스트가 끝나면 Gradle이 앱을 제거할 수 있으므로, 실제로 사용하는 기기에서는 실행하지 마세요.
-
-수집기 테스트는 네트워크 없이 실행됩니다.
-
-```bash
-cd server/today_feed && python3 -m unittest
-```
-
-## 폴더 구조
-
-```text
-app/src/main/java/kr/akotis/todonote/
-├── activity/   메인 화면
-├── adapter/    목록 어댑터
-├── database/   SQLite 접근과 DB 손상 대비
-├── fragment/   탭과 각 화면
-├── model/      데이터 모델
-├── service/    FCM 수신
-├── util/       검색, 잠금 해제 등 공용 코드
-├── widget/     홈 화면 위젯
-└── worker/     할 일 알림 예약
-server/today_feed/  오늘 화면 수집기
-```
+`connectedDebugAndroidTest`는 끝나면 앱을 제거할 수 있으므로 실제로 쓰는 기기에서는 실행하지 마세요.
 
 ## 보안 참고
 
-- 노트 본문은 DB에 평문으로 저장됩니다. 노트 잠금과 앱 잠금은 화면 접근만 막습니다.
-- 내보낸 백업 파일도 평문 SQLite 파일입니다. 다운로드 폴더에 저장되므로 공유하거나 올리지 마세요.
-
-## 저장소에 포함하지 않는 파일
-
-`google-services.json`, 서명 키(`*.jks`, `*.keystore`), `local.properties`, 빌드 결과물(`*.apk`, `*.aab`), DB와 백업 파일(`*.db`), IDE 설정(`.idea/`), 작업 문서(`agent-docs/`)는 `.gitignore`로 제외합니다. `server/today_feed/`에서는 `*.py`, `*.sh`, `*.example`, `sources.json`만 저장소에 올라가며, 서비스 계정 키와 토큰은 그 밖의 위치에 두는 것을 권장합니다.
+- 노트 본문과 내보낸 백업은 평문입니다. 노트 잠금과 앱 잠금은 화면 접근만 막습니다.
+- `.gitignore`가 `google-services.json`, 서명 키, 서비스 계정 키, DB, 빌드 결과물, `server/`, `agent-docs/`를 제외합니다.
