@@ -58,7 +58,7 @@ public class ToDoNotificationWorker extends Worker {
         // 알림 생성
         NotificationCompat.Builder builder = new NotificationCompat.Builder(
                 getApplicationContext(), CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_notification) // 상태 표시줄 아이콘은 단색 모양만 쓰인다
+                .setSmallIcon(R.mipmap.ic_main) // 앱 아이콘 사용
                 .setContentTitle(todo.getTitle())
                 .setContentText(todo.getDetail() != null && !todo.getDetail().isEmpty() 
                         ? todo.getDetail() 

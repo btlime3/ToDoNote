@@ -125,7 +125,7 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
 
         // 알림 생성
         NotificationCompat.Builder notificationBuilder = new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_notification) // 상태 표시줄 아이콘은 단색 모양만 쓰인다
+                .setSmallIcon(R.mipmap.ic_main) // 앱 아이콘 사용
                 .setContentTitle(title != null ? title : "새 알림")
                 .setContentText(bodyText)
                 .setAutoCancel(true)
