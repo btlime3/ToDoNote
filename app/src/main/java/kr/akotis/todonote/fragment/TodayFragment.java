@@ -76,6 +76,8 @@ public class TodayFragment extends Fragment {
                 (item, position) -> toggleSaved(item));
         newsAdapter.setSavedUrls(savedUrls);
         techAdapter.setSavedUrls(savedUrls);
+        newsAdapter.setOnItemReadListener(item -> database.markRead(item.getId()));
+        techAdapter.setOnItemReadListener(item -> database.markRead(item.getId()));
 
         setupPager(view.findViewById(R.id.pager_today), view.findViewById(R.id.tabs_today));
         return view;

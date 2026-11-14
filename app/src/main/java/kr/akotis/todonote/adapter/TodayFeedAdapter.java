@@ -56,6 +56,11 @@ public class TodayFeedAdapter extends RecyclerView.Adapter<RecyclerView.ViewHold
         void onItemLongClick(TodayItem item, int position);
     }
 
+    /** 링크를 열지 않고 읽은 경우(AI 요약을 펼침). 읽음 표시를 저장하는 화면만 넘긴다. */
+    public interface OnItemReadListener {
+        void onItemRead(TodayItem item);
+    }
+
     private static final class DayHeader {
         final String title;
         final String caption;
@@ -72,11 +77,16 @@ public class TodayFeedAdapter extends RecyclerView.Adapter<RecyclerView.ViewHold
     /** AI 요약을 펼친 글의 주소. 새 소식이 도착해 목록을 다시 그려도 펼친 상태를 유지한다. */
     private final Set<String> expandedAi = new HashSet<>();
     private Set<String> savedUrls = Collections.emptySet();
+    private OnItemReadListener readListener;
     private boolean highlightNew = true;
 
     public TodayFeedAdapter(OnItemClickListener listener, OnItemLongClickListener longClickListener) {
         this.listener = listener;
         this.longClickListener = longClickListener;
+    }
+
+    public void setOnItemReadListener(OnItemReadListener readListener) {
+        this.readListener = readListener;
     }
 
     public void setHighlightNew(boolean highlightNew) {
@@ -222,11 +232,13 @@ public class TodayFeedAdapter extends RecyclerView.Adapter<RecyclerView.ViewHold
                     listener.onItemClick((TodayItem) rows.get(position), position);
                 }
             });
-            // 박스를 눌러도 링크를 열거나 읽음으로 바꾸지 않고 박스만 여닫는다.
+            // 박스를 눌러도 링크는 열지 않는다. 요약을 펼치면 내용을 읽은 것이므로 읽음으로 바꾼다.
             boxAi.setOnClickListener(v -> {
                 int position = getBindingAdapterPosition();
                 if (!ignoreClick && position != RecyclerView.NO_POSITION) {
-                    toggleAi(((TodayItem) rows.get(position)).getUrl());
+                    TodayItem item = (TodayItem) rows.get(position);
+                    toggleAi(item.getUrl());
+                    markReadByAi(item);
                 }
             });
             watchSavePress(itemView);
@@ -255,6 +267,16 @@ public class TodayFeedAdapter extends RecyclerView.Adapter<RecyclerView.ViewHold
                 itemView.postDelayed(() -> itemView.requestRectangleOnScreen(
                         new Rect(0, 0, itemView.getWidth(), itemView.getHeight())), AI_TOGGLE_MILLIS + 40);
             }
+        }
+
+        /** 펼치는 중이므로 다시 그리지 않고 제목 굵기만 바꾼다. 다시 그리면 펼침 움직임이 끊긴다. */
+        private void markReadByAi(TodayItem item) {
+            if (readListener == null || item.isRead() || !expandedAi.contains(item.getUrl())) {
+                return;
+            }
+            item.setRead(true);
+            tvTitle.setTypeface(Typeface.DEFAULT, Typeface.NORMAL);
+            readListener.onItemRead(item);
         }
 
         private void showAi(boolean expanded) {
