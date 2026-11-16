@@ -36,6 +36,7 @@ import java.util.concurrent.TimeUnit;
 
 import kr.akotis.todonote.R;
 import kr.akotis.todonote.model.TodayItem;
+import kr.akotis.todonote.util.AiSummaryFormatter;
 import kr.akotis.todonote.util.TodayThumbnailLoader;
 
 /** 소식을 날짜별로 묶어 보여 준다. 목록 맨 위 머리글에는 마지막 수신 시각을 함께 표시한다. */
@@ -269,6 +270,10 @@ public class TodayFeedAdapter extends RecyclerView.Adapter<RecyclerView.ViewHold
             }
         }
 
+        private int dp(int value) {
+            return Math.round(value * itemView.getResources().getDisplayMetrics().density);
+        }
+
         /** 펼치는 중이므로 다시 그리지 않고 제목 굵기만 바꾼다. 다시 그리면 펼침 움직임이 끊긴다. */
         private void markReadByAi(TodayItem item) {
             if (readListener == null || item.isRead() || !expandedAi.contains(item.getUrl())) {
@@ -339,7 +344,9 @@ public class TodayFeedAdapter extends RecyclerView.Adapter<RecyclerView.ViewHold
             tvSummary.setText(hasSummary ? summary : "");
             String aiText = item.getDisplayAiText();
             boxAi.setVisibility(aiText.isEmpty() ? View.GONE : View.VISIBLE);
-            tvAi.setText(aiText);
+            tvAi.setText(AiSummaryFormatter.format(aiText,
+                    ContextCompat.getColor(itemView.getContext(), R.color.color_today_ai_text),
+                    dp(8), dp(2)));
             showAi(expandedAi.contains(item.getUrl()));
             TodayThumbnailLoader.load(ivThumbnail, item.getImageUrl());
             ivSaved.setVisibility(highlightNew && savedUrls.contains(item.getUrl()) ? View.VISIBLE : View.GONE);
