@@ -1,5 +1,6 @@
 package kr.akotis.todonote.adapter;
 
+import android.animation.ValueAnimator;
 import android.annotation.SuppressLint;
 import android.graphics.Rect;
 import android.graphics.Typeface;
@@ -281,6 +282,14 @@ public class TodayFeedAdapter extends RecyclerView.Adapter<RecyclerView.ViewHold
             }
             item.setRead(true);
             tvTitle.setTypeface(Typeface.DEFAULT, Typeface.NORMAL);
+            // 새 소식 배경도 바로 바꾼다. 펼침 움직임과 같은 시간 동안 색을 옮겨 갑자기 바뀌어 보이지 않게 한다.
+            int from = card.getCardBackgroundColor().getDefaultColor();
+            int to = backgroundColor(item);
+            if (from != to) {
+                ValueAnimator fade = ValueAnimator.ofArgb(from, to).setDuration(AI_TOGGLE_MILLIS);
+                fade.addUpdateListener(animation -> card.setCardBackgroundColor((int) animation.getAnimatedValue()));
+                fade.start();
+            }
             readListener.onItemRead(item);
         }
 
@@ -350,10 +359,14 @@ public class TodayFeedAdapter extends RecyclerView.Adapter<RecyclerView.ViewHold
             showAi(expandedAi.contains(item.getUrl()));
             TodayThumbnailLoader.load(ivThumbnail, item.getImageUrl());
             ivSaved.setVisibility(highlightNew && savedUrls.contains(item.getUrl()) ? View.VISIBLE : View.GONE);
-            // 새 소식은 배경으로 눈에 띄게 한다. 읽은 글은 제목 굵기만 줄여 흐려지지 않게 구분한다.
-            card.setCardBackgroundColor(ContextCompat.getColor(itemView.getContext(),
-                    highlightNew && isNew(item) ? R.color.color_today_new : R.color.color_surface));
+            card.setCardBackgroundColor(backgroundColor(item));
             tvTitle.setTypeface(Typeface.DEFAULT, item.isRead() ? Typeface.NORMAL : Typeface.BOLD);
+        }
+
+        /** 새 소식은 배경으로 눈에 띄게 한다. 읽은 글은 제목 굵기만 줄여 흐려지지 않게 구분한다. */
+        private int backgroundColor(TodayItem item) {
+            return ContextCompat.getColor(itemView.getContext(),
+                    highlightNew && isNew(item) ? R.color.color_today_new : R.color.color_surface);
         }
 
         /** 아직 읽지 않았고, 오늘 나온 글이거나 하루 안에 받은 글이다. */
