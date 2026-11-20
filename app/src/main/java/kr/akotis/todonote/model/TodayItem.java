@@ -108,7 +108,7 @@ public class TodayItem {
         this.aiText = aiText;
     }
 
-    /** 옛 형식의 AI 요약은 새로운 기술 탭에서만 상자로 옮긴다. 오늘 소식에는 AI 요약 상자를 두지 않는다. */
+    /** 옛 형식(1.15까지)의 AI 요약은 새로운 기술 탭에서만 상자로 옮긴다. 그때 오늘 소식의 요약은 원문 자리에 있었다. */
     private boolean summaryIsAiBox() {
         return aiSummary && CATEGORY_TECH.equals(category);
     }
@@ -118,11 +118,8 @@ public class TodayItem {
         return summaryIsAiBox() ? "" : summary;
     }
 
-    /** @return 카드 안의 상자에 보여 줄 AI 요약. 없으면 빈 문자열 */
+    /** @return 카드 안의 상자에 보여 줄 AI 요약. 두 탭 모두 같은 상자를 쓴다. 없으면 빈 문자열 */
     public String getDisplayAiText() {
-        if (!CATEGORY_TECH.equals(category)) {
-            return "";
-        }
         if (aiText != null && !aiText.isEmpty()) {
             return aiText;
         }

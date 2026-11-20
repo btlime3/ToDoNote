@@ -18,6 +18,15 @@
         app:tabSelectedTextColor="@color/color_primary_text"
         app:tabTextColor="@color/color_text_light" />
 
+    <!-- 메모와 같은 접이식 검색란. 휴대폰에 있는 소식만 찾고 두 탭에 함께 적용한다. -->
+    <include
+        android:id="@+id/search_card"
+        layout="@layout/view_search_bar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp" />
+
     <androidx.viewpager2.widget.ViewPager2
         android:id="@+id/pager_today"
         android:layout_width="match_parent"

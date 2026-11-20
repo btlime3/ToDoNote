@@ -38,12 +38,15 @@ import java.util.concurrent.TimeUnit;
 import kr.akotis.todonote.R;
 import kr.akotis.todonote.model.TodayItem;
 import kr.akotis.todonote.util.AiSummaryFormatter;
+import kr.akotis.todonote.util.SeenMarker;
 import kr.akotis.todonote.util.TodayThumbnailLoader;
 
 /** 소식을 날짜별로 묶어 보여 준다. 목록 맨 위 머리글에는 마지막 수신 시각을 함께 표시한다. */
 public class TodayFeedAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     private static final int TYPE_HEADER = 0;
     private static final int TYPE_ITEM = 1;
+    private static final int TYPE_SEEN_DIVIDER = 2;
+    private static final Object SEEN_DIVIDER = new Object();
     /** 시스템 기본값(0.4초)은 목록을 넘기다 잘못 눌리기 쉬워서 더 오래 눌렀을 때만 보관한다. */
     private static final long SAVE_PRESS_MILLIS = 800;
     private static final long AI_TOGGLE_MILLIS = 180;
@@ -117,11 +120,21 @@ public class TodayFeedAdapter extends RecyclerView.Adapter<RecyclerView.ViewHold
         notifyDataSetChanged();
     }
 
-    public void setItems(List<TodayItem> items, String lastReceived) {
+    /** @param seenUntil 지난번에 이 탭을 볼 때까지 받은 마지막 시각. 이후에 받은 글과 이미 본 글 사이에 선을 긋는다 */
+    public void setItems(List<TodayItem> items, String lastReceived, long seenUntil) {
         rows.clear();
+        List<Long> receivedTimes = new ArrayList<>();
+        for (TodayItem item : items) {
+            receivedTimes.add(item.getReceivedAt());
+        }
+        int divider = SeenMarker.position(receivedTimes, seenUntil);
         LocalDate today = LocalDate.now();
         LocalDate currentDay = null;
-        for (TodayItem item : items) {
+        for (int i = 0; i < items.size(); i++) {
+            TodayItem item = items.get(i);
+            if (i == divider) {
+                rows.add(SEEN_DIVIDER);
+            }
             LocalDate day = localDate(item.getDisplayTime());
             if (!day.equals(currentDay)) {
                 rows.add(new DayHeader(dayTitle(day, today), rows.isEmpty() ? lastReceived : ""));
@@ -158,7 +171,11 @@ public class TodayFeedAdapter extends RecyclerView.Adapter<RecyclerView.ViewHold
 
     @Override
     public int getItemViewType(int position) {
-        return rows.get(position) instanceof DayHeader ? TYPE_HEADER : TYPE_ITEM;
+        Object row = rows.get(position);
+        if (row == SEEN_DIVIDER) {
+            return TYPE_SEEN_DIVIDER;
+        }
+        return row instanceof DayHeader ? TYPE_HEADER : TYPE_ITEM;
     }
 
     @NonNull
@@ -168,6 +185,10 @@ public class TodayFeedAdapter extends RecyclerView.Adapter<RecyclerView.ViewHold
         if (viewType == TYPE_HEADER) {
             return new HeaderViewHolder(inflater.inflate(R.layout.item_today_header, parent, false));
         }
+        if (viewType == TYPE_SEEN_DIVIDER) {
+            return new RecyclerView.ViewHolder(inflater.inflate(R.layout.item_today_divider, parent, false)) {
+            };
+        }
         return new ItemViewHolder(inflater.inflate(R.layout.item_today, parent, false));
     }
 
@@ -176,7 +197,7 @@ public class TodayFeedAdapter extends RecyclerView.Adapter<RecyclerView.ViewHold
         Object row = rows.get(position);
         if (holder instanceof HeaderViewHolder) {
             ((HeaderViewHolder) holder).bind((DayHeader) row);
-        } else {
+        } else if (holder instanceof ItemViewHolder) {
             ((ItemViewHolder) holder).bind((TodayItem) row);
         }
     }

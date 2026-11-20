@@ -123,7 +123,7 @@ public class TodayFeedDatabaseTest {
     }
 
     @Test
-    public void aiTextIsStoredApartFromSummaryAndShownOnlyForTech() {
+    public void aiTextIsStoredApartFromSummaryAndShownInBothTabs() {
         String json = "[{\"c\":\"tech\",\"t\":\"기술\",\"d\":\"원문\",\"u\":\"https://e.com/t\",\"ai\":\"AI 요약\"},"
                 + "{\"c\":\"news\",\"t\":\"뉴스\",\"d\":\"원문\",\"u\":\"https://e.com/n\",\"ai\":\"AI 요약\"}]";
 
@@ -134,7 +134,7 @@ public class TodayFeedDatabaseTest {
         assertEquals("AI 요약", tech.getDisplayAiText());
         TodayItem news = database.getItems(TodayItem.CATEGORY_NEWS).get(0);
         assertEquals("원문", news.getDisplaySummary());
-        assertEquals("", news.getDisplayAiText());
+        assertEquals("AI 요약", news.getDisplayAiText());
     }
 
     /** 1.15까지의 수집기가 보낸 글은 요약 칸에 AI 요약이 있다. */

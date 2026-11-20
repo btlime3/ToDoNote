@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 지난번에 이 탭을 본 뒤로 새로 받은 소식과 이미 본 소식 사이의 구분선 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:gravity="center_vertical"
+    android:importantForAccessibility="yes"
+    android:orientation="horizontal"
+    android:paddingStart="16dp"
+    android:paddingTop="10dp"
+    android:paddingEnd="16dp"
+    android:paddingBottom="4dp">
+
+    <View
+        android:layout_width="0dp"
+        android:layout_height="1dp"
+        android:layout_weight="1"
+        android:background="@color/color_primary" />
+
+    <TextView
+        android:id="@+id/tv_today_divider"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:layout_marginEnd="8dp"
+        android:text="여기부터 이미 본 소식"
+        android:textColor="@color/color_primary_text"
+        android:textSize="11sp" />
+
+    <View
+        android:layout_width="0dp"
+        android:layout_height="1dp"
+        android:layout_weight="1"
+        android:background="@color/color_primary" />
+</LinearLayout>
